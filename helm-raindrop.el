@@ -107,9 +107,14 @@ DO NOT SET VALUE MANUALLY.")
 (defconst helm-raindrop-default-rate-limit 120
   "Default API rate limit per hour when not specified in headers.")
 
-(defvar helm-raindrop-debug-start-time nil)
-(defvar helm-raindrop-debug-total-start-time nil)
-(defvar helm-raindrop-debug-request-count 0)
+(defvar helm-raindrop-debug-start-time nil
+  "Start time for debugging individual API requests.")
+
+(defvar helm-raindrop-debug-total-start-time nil
+  "Start time for debugging the entire session.")
+
+(defvar helm-raindrop-debug-request-count 0
+  "Number of API requests made in the current session.")
 
 ;;; Macro
 
