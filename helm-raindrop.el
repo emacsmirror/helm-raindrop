@@ -126,8 +126,8 @@ DO NOT SET VALUE MANUALLY.")
   "Load `helm-raindrop-file'."
   (helm-raindrop-file-check
    (with-current-buffer (helm-candidate-buffer 'global)
-	(let ((coding-system-for-read 'utf-8))
-	  (insert-file-contents helm-raindrop-file)))))
+     (let ((coding-system-for-read 'utf-8))
+       (insert-file-contents helm-raindrop-file)))))
 
 (defvar helm-raindrop-action
   '(("Browse URL" . helm-raindrop-browse-url)
@@ -368,7 +368,6 @@ ERROR-THROWN is (ERROR-SYMBOL . DATA), or nil."
 			       helm-raindrop-debug-start-time))
 	       (format-time-string "%Y-%m-%d %H:%M:%S" (current-time)))))
 
-
 (defun helm-raindrop-debug-log-rate-limit-wait (wait-time)
   "Log rate limit wait message.
 WAIT-TIME is the seconds to wait."
@@ -387,12 +386,12 @@ RETRY-COUNT is the current retry attempt."
 (defun helm-raindrop-debug-log-session-summary ()
   "Log summary of all requests in the session."
   (if (memq helm-raindrop-debug-mode '(info debug))
-    (message "[Raindrop] Total: %d requests completed in %0.1fsec at %s."
-	     helm-raindrop-debug-request-count
-	     (time-to-seconds
-	      (time-subtract (current-time)
-			     helm-raindrop-debug-total-start-time))
-	     (format-time-string "%Y-%m-%d %H:%M:%S" (current-time)))))
+      (message "[Raindrop] Total: %d requests completed in %0.1fsec at %s."
+	       helm-raindrop-debug-request-count
+	       (time-to-seconds
+		(time-subtract (current-time)
+			       helm-raindrop-debug-total-start-time))
+	       (format-time-string "%Y-%m-%d %H:%M:%S" (current-time)))))
 
 ;;; Timer
 
