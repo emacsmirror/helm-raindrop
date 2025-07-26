@@ -71,20 +71,30 @@ nil: No logging
                  (const :tag "Debug - All messages" debug))
   :group 'helm-raindrop)
 
+;;; Internal Constants
+
+(defconst helm-raindrop-work-buffer-name " *helm-raindrop-work*"
+  "Working buffer name of `helm-raindrop-http-request'.")
+
+(defconst helm-raindrop-http-status-rate-limit 429
+  "HTTP status code for rate limit exceeded.")
+
+(defconst helm-raindrop-default-retry-after 2
+  "Default retry-after value in seconds when not specified in headers.")
+
+(defconst helm-raindrop-default-rate-limit 120
+  "Default API rate limit per hour when not specified in headers.")
+
+(defconst helm-raindrop-max-retries 3
+  "Maximum number of retries for rate limited requests.")
+
 ;;; Internal Variables
 
 (defvar helm-raindrop-api-per-page 50
   "Page size of Raindrop.io API.
 See https://developer.raindrop.io/v1/raindrops/multiple")
 
-(defconst helm-raindrop-work-buffer-name " *helm-raindrop-work*"
-  "Working buffer name of `helm-raindrop-http-request'.")
-
 (defvar helm-raindrop-full-frame helm-full-frame)
-
-(defvar helm-raindrop-timer nil
-  "Timer object for Raindrop.io caching will be stored here.
-DO NOT SET VALUE MANUALLY.")
 
 (defvar helm-raindrop-rate-limit-remaining nil
   "Remaining number of requests before hitting rate limit.")
@@ -95,17 +105,9 @@ DO NOT SET VALUE MANUALLY.")
 (defvar helm-raindrop-rate-limit-reset nil
   "Unix timestamp when the rate limit will reset.")
 
-(defconst helm-raindrop-max-retries 3
-  "Maximum number of retries for rate limited requests.")
-
-(defconst helm-raindrop-http-status-rate-limit 429
-  "HTTP status code for rate limit exceeded.")
-
-(defconst helm-raindrop-default-retry-after 2
-  "Default retry-after value in seconds when not specified in headers.")
-
-(defconst helm-raindrop-default-rate-limit 120
-  "Default API rate limit per hour when not specified in headers.")
+(defvar helm-raindrop-timer nil
+  "Timer object for Raindrop.io caching will be stored here.
+DO NOT SET VALUE MANUALLY.")
 
 (defvar helm-raindrop-debug-start-time nil
   "Start time for debugging individual API requests.")
