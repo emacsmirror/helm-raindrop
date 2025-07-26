@@ -62,8 +62,13 @@ If the collection URL is https://app.raindrop.io/my/123456, then it is 123456."
   :group 'helm-raindrop)
 
 (defcustom helm-raindrop-debug-mode nil
-  "Enable debug mode for HTTP requests."
-  :type 'boolean
+  "Debug logging level for HTTP requests.
+nil: No logging
+`info': Summary only
+`debug': All debug messages"
+  :type '(choice (const :tag "No logging" nil)
+                 (const :tag "Info - Summary only" info)
+                 (const :tag "Debug - All messages" debug))
   :group 'helm-raindrop)
 
 ;;; Internal Variables
@@ -247,7 +252,7 @@ Argument RESPONSE-BODY is http response body as a json"
 (defun helm-raindrop-debug-log-request-success (url)
   "Log successful completion of request.
 URL is the request URL."
-  (if helm-raindrop-debug-mode
+  (if (eq helm-raindrop-debug-mode 'debug)
       (message "[Raindrop] Succeed to GET %s (%0.1fsec) at %s."
 	       url
 	       (time-to-seconds
@@ -259,7 +264,7 @@ URL is the request URL."
   "Log error for failed request.
 URL is the request URL.
 ERROR-THROWN is (ERROR-SYMBOL . DATA), or nil."
-  (if helm-raindrop-debug-mode
+  (if (eq helm-raindrop-debug-mode 'debug)
       (message "[Raindrop] Fail %S to GET %s (%0.1fsec) at %s."
 	       error-thrown
 	       url
@@ -270,7 +275,7 @@ ERROR-THROWN is (ERROR-SYMBOL . DATA), or nil."
 
 (defun helm-raindrop-debug-log-session-summary ()
   "Log summary of all requests in the session."
-  (when helm-raindrop-debug-mode
+  (if (memq helm-raindrop-debug-mode '(info debug))
     (message "[Raindrop] Total: %d requests completed in %0.1fsec at %s."
 	     helm-raindrop-debug-request-count
 	     (time-to-seconds
