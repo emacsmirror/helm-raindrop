@@ -61,6 +61,11 @@ If the collection URL is https://app.raindrop.io/my/123456, then it is 123456."
   :type 'integer
   :group 'helm-raindrop)
 
+(defcustom helm-raindrop-debug-mode nil
+  "Enable debug mode for HTTP requests."
+  :type 'boolean
+  :group 'helm-raindrop)
+
 ;;; Internal Variables
 
 (defvar helm-raindrop-api-per-page 50
@@ -76,8 +81,9 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
   "Timer object for Raindrop.io caching will be stored here.
 DO NOT SET VALUE MANUALLY.")
 
-(defvar helm-raindrop-debug-mode nil)
 (defvar helm-raindrop-debug-start-time nil)
+(defvar helm-raindrop-debug-total-start-time nil)
+(defvar helm-raindrop-debug-request-count 0)
 
 ;;; Macro
 
@@ -146,7 +152,9 @@ It is the first page if PAGE is nil."
   (when (eq page 0)
     (if (get-buffer helm-raindrop-work-buffer-name)
 	(kill-buffer helm-raindrop-work-buffer-name))
-    (get-buffer-create helm-raindrop-work-buffer-name))
+    (get-buffer-create helm-raindrop-work-buffer-name)
+    (helm-raindrop-http-debug-init-total))
+  (helm-raindrop-http-debug-increment-count)
   (helm-raindrop-http-debug-start)
   (request
     (helm-raindrop-get-url page)
@@ -160,7 +168,8 @@ It is the first page if PAGE is nil."
 		  (helm-raindrop-insert-items data)
 		  (if (helm-raindrop-next-page-exist-p data)
 		      (helm-raindrop-http-request (1+ page))
-		    (write-region (point-min) (point-max) helm-raindrop-file)))))
+		    (write-region (point-min) (point-max) helm-raindrop-file)
+		    (helm-raindrop-http-debug-finish-total)))))
     :error (cl-function
 	    (lambda (&key error-thrown response &allow-other-keys)
 	      (helm-raindrop-http-debug-finish-error (request-response-url response) error-thrown)))))
@@ -230,6 +239,15 @@ Argument RESPONSE-BODY is http response body as a json"
   "Start debug mode."
   (setq helm-raindrop-debug-start-time (current-time)))
 
+(defun helm-raindrop-http-debug-init-total ()
+  "Initialize total request tracking."
+  (setq helm-raindrop-debug-total-start-time (current-time)
+	helm-raindrop-debug-request-count 0))
+
+(defun helm-raindrop-http-debug-increment-count ()
+  "Increment request count."
+  (setq helm-raindrop-debug-request-count (1+ helm-raindrop-debug-request-count)))
+
 (defun helm-raindrop-http-debug-finish-success (url)
   "Stop debug mode.
 SYMBOL-STATUS is symbol.  e.g: success
@@ -254,6 +272,16 @@ ERROR-THROWN is (ERROR-SYMBOL . DATA), or nil."
 		(time-subtract (current-time)
 			       helm-raindrop-debug-start-time))
 	       (format-time-string "%Y-%m-%d %H:%M:%S" (current-time)))))
+
+(defun helm-raindrop-http-debug-finish-total ()
+  "Output debug message for total execution time."
+  (when helm-raindrop-debug-mode
+    (message "[Raindrop] Total: %d requests completed in %0.1fsec at %s."
+	     helm-raindrop-debug-request-count
+	     (time-to-seconds
+	      (time-subtract (current-time)
+			     helm-raindrop-debug-total-start-time))
+	     (format-time-string "%Y-%m-%d %H:%M:%S" (current-time)))))
 
 ;;; Timer
 
