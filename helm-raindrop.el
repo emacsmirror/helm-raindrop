@@ -49,6 +49,11 @@ If the collection URL is https://app.raindrop.io/my/123456, then it is 123456."
 		 string)
   :group 'helm-raindrop)
 
+(defcustom helm-raindrop-include-nested-collections t
+  "Include items from nested collections when non-nil."
+  :type 'boolean
+  :group 'helm-raindrop)
+
 (defcustom helm-raindrop-file
   (expand-file-name "helm-raindrop" user-emacs-directory)
   "A cache file get items with `helm-raindrop-search-query'."
@@ -228,7 +233,10 @@ RETRY-COUNT tracks the number of retry attempts."
 PAGE is a natural number.  If it doesn't set, it equal to 0."
   (format "https://api.raindrop.io/rest/v1/raindrops/%s?%s"
 	  helm-raindrop-collection-id
-	  (url-build-query-string `((page ,page) (perpage ,helm-raindrop-api-per-page)))))
+	  (url-build-query-string
+	   `((page ,page)
+	     (perpage ,helm-raindrop-api-per-page)
+	     ,@(if helm-raindrop-include-nested-collections '((nested "true")))))))
 
 (defun helm-raindrop-insert-items (response-body)
   "Insert Raindrop items as the format of `helm-raindrop-file'.
