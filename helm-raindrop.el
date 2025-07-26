@@ -154,7 +154,6 @@ It is the first page if PAGE is nil."
 	(kill-buffer helm-raindrop-work-buffer-name))
     (get-buffer-create helm-raindrop-work-buffer-name)
     (helm-raindrop-debug-init-session))
-  (helm-raindrop-debug-count-request)
   (helm-raindrop-debug-start-request)
   (request
     (helm-raindrop-get-url page)
@@ -235,18 +234,15 @@ Argument RESPONSE-BODY is http response body as a json"
 
 ;;; Debug
 
-(defun helm-raindrop-debug-start-request ()
-  "Start timing for individual request."
-  (setq helm-raindrop-debug-start-time (current-time)))
-
 (defun helm-raindrop-debug-init-session ()
   "Initialize debug session for batch requests."
   (setq helm-raindrop-debug-total-start-time (current-time)
 	helm-raindrop-debug-request-count 0))
 
-(defun helm-raindrop-debug-count-request ()
-  "Increment the request counter."
-  (setq helm-raindrop-debug-request-count (1+ helm-raindrop-debug-request-count)))
+(defun helm-raindrop-debug-start-request ()
+  "Start timing for individual request and increment counter."
+  (cl-incf helm-raindrop-debug-request-count)
+  (setq helm-raindrop-debug-start-time (current-time)))
 
 (defun helm-raindrop-debug-log-request-success (url)
   "Log successful completion of request.
