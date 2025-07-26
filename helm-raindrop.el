@@ -107,6 +107,9 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
 
 (defvar helm-raindrop-full-frame helm-full-frame)
 
+(defvar helm-raindrop-remaining-collection-ids nil
+  "Remaining collection IDs to process.")
+
 (defvar helm-raindrop-rate-limit-remaining nil
   "Remaining number of requests before hitting rate limit.")
 
@@ -129,8 +132,11 @@ DO NOT SET VALUE MANUALLY.")
 (defvar helm-raindrop-debug-request-count 0
   "Number of API requests made in the current session.")
 
-(defvar helm-raindrop-remaining-collection-ids nil
-  "Remaining collection IDs to process.")
+(defvar helm-raindrop-debug-current-collection-processed-items 0
+  "Number of items processed in the current collection.")
+
+(defvar helm-raindrop-debug-current-collection-total-items 0
+  "Total number of items in the current collection.")
 
 ;;; Macro
 
@@ -223,10 +229,12 @@ RETRY-COUNT tracks the number of retry attempts."
       :success (cl-function
                 (lambda (&key data response &allow-other-keys)
                   (helm-raindrop-update-rate-limit-from-headers response)
+                  (if (eq page 0) (helm-raindrop-debug-update-collection data))
                   (helm-raindrop-debug-log-request-success (request-response-url response))
                   (with-current-buffer (get-buffer helm-raindrop-work-buffer-name)
                     (goto-char (point-max))
                     (helm-raindrop-insert-items data)
+                    (helm-raindrop-debug-update-page data)
                     (if (helm-raindrop-next-page-exist-p data)
                         (helm-raindrop-do-http-request collection-id (1+ page) 0)
                       ;; Current collection finished, check if there are more
@@ -274,6 +282,7 @@ Return a list of collection ID strings."
 
 (defun helm-raindrop-process-next-collection ()
   "Process the next collection in the list."
+  (helm-raindrop-debug-init-collection)
   (setq helm-raindrop-remaining-collection-ids
         (cdr helm-raindrop-remaining-collection-ids))
   (if helm-raindrop-remaining-collection-ids
@@ -355,6 +364,10 @@ Argument RESPONSE-BODY is http response body as a json"
   "Return tags of ITEM, as an list."
   (append (cdr (assoc 'tags item)) nil))
 
+(defun helm-raindrop-total-count (response-body)
+  "Return total count from RESPONSE-BODY."
+  (cdr (assoc 'count response-body)))
+
 ;;; Rate limit handler
 
 (defun helm-raindrop-init-rate-limit-state ()
@@ -417,7 +430,23 @@ RETRY-COUNT is the current retry attempt."
 (defun helm-raindrop-debug-init-session ()
   "Initialize debug session for batch requests."
   (setq helm-raindrop-debug-total-start-time (current-time)
-	helm-raindrop-debug-request-count 0))
+	helm-raindrop-debug-request-count 0)
+  (helm-raindrop-debug-init-collection))
+
+(defun helm-raindrop-debug-init-collection ()
+  "Initialize debug counters for a new collection."
+  (setq helm-raindrop-debug-current-collection-processed-items 0
+        helm-raindrop-debug-current-collection-total-items 0))
+
+(defun helm-raindrop-debug-update-collection (response-body)
+  "Update debug information for current collection from RESPONSE-BODY."
+  (setq helm-raindrop-debug-current-collection-total-items
+        (or (helm-raindrop-total-count response-body) 0)))
+
+(defun helm-raindrop-debug-update-page (response-body)
+  "Update debug information after processing a page with RESPONSE-BODY."
+  (cl-incf helm-raindrop-debug-current-collection-processed-items
+           (length (helm-raindrop-items response-body))))
 
 (defun helm-raindrop-debug-start-request ()
   "Start timing for individual request and increment counter."
@@ -428,12 +457,14 @@ RETRY-COUNT is the current retry attempt."
   "Log successful completion of request.
 URL is the request URL."
   (if (eq helm-raindrop-debug-mode 'debug)
-      (let ((total-count (length (helm-raindrop-normalize-collection-ids)))
-            (remaining-count (length helm-raindrop-remaining-collection-ids)))
-        (message "[Raindrop] Succeed to GET %s [%d/%d collections] (%0.1fsec) [rate limit: %d/%d] at %s."
+      (let ((total-collections (length (helm-raindrop-normalize-collection-ids)))
+            (remaining-collections (length helm-raindrop-remaining-collection-ids)))
+        (message "[Raindrop] Succeed to GET %s [collections: %d/%d] [items: %d/%d] (%0.1fsec) [rate limit: %d/%d] at %s."
 	         url
-	         (1+ (- total-count remaining-count))
-	         total-count
+	         (1+ (- total-collections remaining-collections))
+	         total-collections
+                 helm-raindrop-debug-current-collection-processed-items
+                 helm-raindrop-debug-current-collection-total-items
 	         (time-to-seconds
 		  (time-subtract (current-time)
 			         helm-raindrop-debug-start-time))
