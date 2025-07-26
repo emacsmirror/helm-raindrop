@@ -153,26 +153,26 @@ It is the first page if PAGE is nil."
     (if (get-buffer helm-raindrop-work-buffer-name)
 	(kill-buffer helm-raindrop-work-buffer-name))
     (get-buffer-create helm-raindrop-work-buffer-name)
-    (helm-raindrop-http-debug-init-total))
-  (helm-raindrop-http-debug-increment-count)
-  (helm-raindrop-http-debug-start)
+    (helm-raindrop-debug-init-session))
+  (helm-raindrop-debug-count-request)
+  (helm-raindrop-debug-start-request)
   (request
     (helm-raindrop-get-url page)
     :headers `(("Authorization" . ,(concat "Bearer " helm-raindrop-access-token)))
     :parser 'json-read
     :success (cl-function
 	      (lambda (&key data response &allow-other-keys)
-		(helm-raindrop-http-debug-finish-success (request-response-url response))
+		(helm-raindrop-debug-log-request-success (request-response-url response))
 		(with-current-buffer (get-buffer helm-raindrop-work-buffer-name)
 		  (goto-char (point-max))
 		  (helm-raindrop-insert-items data)
 		  (if (helm-raindrop-next-page-exist-p data)
 		      (helm-raindrop-http-request (1+ page))
 		    (write-region (point-min) (point-max) helm-raindrop-file)
-		    (helm-raindrop-http-debug-finish-total)))))
+		    (helm-raindrop-debug-log-session-summary)))))
     :error (cl-function
 	    (lambda (&key error-thrown response &allow-other-keys)
-	      (helm-raindrop-http-debug-finish-error (request-response-url response) error-thrown)))))
+	      (helm-raindrop-debug-log-request-error (request-response-url response) error-thrown)))))
 
 (defun helm-raindrop-get-url (page)
   "Return Raindrop.io API endpoint for getting items.
@@ -235,23 +235,22 @@ Argument RESPONSE-BODY is http response body as a json"
 
 ;;; Debug
 
-(defun helm-raindrop-http-debug-start ()
-  "Start debug mode."
+(defun helm-raindrop-debug-start-request ()
+  "Start timing for individual request."
   (setq helm-raindrop-debug-start-time (current-time)))
 
-(defun helm-raindrop-http-debug-init-total ()
-  "Initialize total request tracking."
+(defun helm-raindrop-debug-init-session ()
+  "Initialize debug session for batch requests."
   (setq helm-raindrop-debug-total-start-time (current-time)
 	helm-raindrop-debug-request-count 0))
 
-(defun helm-raindrop-http-debug-increment-count ()
-  "Increment request count."
+(defun helm-raindrop-debug-count-request ()
+  "Increment the request counter."
   (setq helm-raindrop-debug-request-count (1+ helm-raindrop-debug-request-count)))
 
-(defun helm-raindrop-http-debug-finish-success (url)
-  "Stop debug mode.
-SYMBOL-STATUS is symbol.  e.g: success
-URL is a request url."
+(defun helm-raindrop-debug-log-request-success (url)
+  "Log successful completion of request.
+URL is the request URL."
   (if helm-raindrop-debug-mode
       (message "[Raindrop] Succeed to GET %s (%0.1fsec) at %s."
 	       url
@@ -260,9 +259,9 @@ URL is a request url."
 			       helm-raindrop-debug-start-time))
 	       (format-time-string "%Y-%m-%d %H:%M:%S" (current-time)))))
 
-(defun helm-raindrop-http-debug-finish-error (url error-thrown)
-  "Stop debug mode for error.
-URL is a request url.
+(defun helm-raindrop-debug-log-request-error (url error-thrown)
+  "Log error for failed request.
+URL is the request URL.
 ERROR-THROWN is (ERROR-SYMBOL . DATA), or nil."
   (if helm-raindrop-debug-mode
       (message "[Raindrop] Fail %S to GET %s (%0.1fsec) at %s."
@@ -273,8 +272,8 @@ ERROR-THROWN is (ERROR-SYMBOL . DATA), or nil."
 			       helm-raindrop-debug-start-time))
 	       (format-time-string "%Y-%m-%d %H:%M:%S" (current-time)))))
 
-(defun helm-raindrop-http-debug-finish-total ()
-  "Output debug message for total execution time."
+(defun helm-raindrop-debug-log-session-summary ()
+  "Log summary of all requests in the session."
   (when helm-raindrop-debug-mode
     (message "[Raindrop] Total: %d requests completed in %0.1fsec at %s."
 	     helm-raindrop-debug-request-count
