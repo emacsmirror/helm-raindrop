@@ -42,11 +42,17 @@ You can create on https://app.raindrop.io/settings/integrations"
 		 string)
   :group 'helm-raindrop)
 
-(defcustom helm-raindrop-collection-id nil
-  "The ID of the collection you want to collect.
-If the collection URL is https://app.raindrop.io/my/123456, then it is 123456."
+(defcustom helm-raindrop-collection-ids nil
+  "The IDs of the collections you want to collect.
+If the collection URL is https://app.raindrop.io/my/123456, then it is 123456.
+Can be either a single string or a list of strings for multiple collections.
+
+Examples:
+  \"123456\"                ;; single collection
+  '(\"123456\" \"789012\")  ;; multiple collections"
   :type '(choice (const nil)
-		 string)
+		 string
+		 (repeat string))
   :group 'helm-raindrop)
 
 (defcustom helm-raindrop-include-nested-collections t
@@ -123,6 +129,9 @@ DO NOT SET VALUE MANUALLY.")
 (defvar helm-raindrop-debug-request-count 0
   "Number of API requests made in the current session.")
 
+(defvar helm-raindrop-remaining-collection-ids nil
+  "Remaining collection IDs to process.")
+
 ;;; Macro
 
 (defmacro helm-raindrop-file-check (&rest body)
@@ -183,31 +192,40 @@ Argument CANDIDATE a line string of a raindrop."
 
 ;;; Process handler
 
-(defun helm-raindrop-http-request (&optional page retry-count)
+(defun helm-raindrop-http-request (&optional collection-id page retry-count)
   "Make a new HTTP request for create `helm-raindrop-file'.
-It is the first page if PAGE is nil.
+If COLLECTION-ID doesn't set, it uses the first collection in `helm-raindrop-collection-ids'.
+If PAGE doesn't set, it uses 0.
 RETRY-COUNT tracks the number of retry attempts."
   (setq page (or page 0)
 	retry-count (or retry-count 0))
-  (when (eq page 0)
+  (when (and (null helm-raindrop-remaining-collection-ids) (eq page 0))
+    ;; Initialize for the first collection
     (if (get-buffer helm-raindrop-work-buffer-name)
 	(kill-buffer helm-raindrop-work-buffer-name))
     (get-buffer-create helm-raindrop-work-buffer-name)
     (helm-raindrop-init-rate-limit-state)
-    (helm-raindrop-debug-init-session))
+    (helm-raindrop-debug-init-session)
+    (setq helm-raindrop-remaining-collection-ids
+          (helm-raindrop-normalize-collection-ids))
+    ;; Validate we have at least one collection
+    (unless helm-raindrop-remaining-collection-ids
+      (error "No collection IDs configured. Please set `helm-raindrop-collection-ids'.")))
+  (setq collection-id (or collection-id (helm-raindrop-get-current-collection-id)))
   ;; Check rate limit before making request
   (if (helm-raindrop-rate-limit-exceeded-p)
-      (helm-raindrop-wait-for-rate-limit-reset page retry-count)
+      (helm-raindrop-wait-for-rate-limit-reset collection-id page retry-count)
     ;; Continue with the request if rate limit is not exceeded
-    (helm-raindrop-do-http-request page retry-count)))
+    (helm-raindrop-do-http-request collection-id page retry-count)))
 
-(defun helm-raindrop-do-http-request (page retry-count)
+(defun helm-raindrop-do-http-request (collection-id page retry-count)
   "Actually perform the HTTP request.
+COLLECTION-ID is the current collection ID.
 PAGE is the current page number.
 RETRY-COUNT tracks the number of retry attempts."
   (helm-raindrop-debug-start-request)
   (request
-    (helm-raindrop-get-url page)
+    (helm-raindrop-get-url collection-id page)
     :headers `(("Authorization" . ,(concat "Bearer " helm-raindrop-access-token)))
     :parser 'json-read
     :success (cl-function
@@ -218,21 +236,69 @@ RETRY-COUNT tracks the number of retry attempts."
 		  (goto-char (point-max))
 		  (helm-raindrop-insert-items data)
 		  (if (helm-raindrop-next-page-exist-p data)
-		      (helm-raindrop-http-request (1+ page))
-		    (write-region (point-min) (point-max) helm-raindrop-file)
-		    (helm-raindrop-debug-log-session-summary)))))
+		      (helm-raindrop-http-request collection-id (1+ page))
+		    ;; Current collection finished, check if there are more
+		    (if (helm-raindrop-next-collection-exist-p)
+			;; More collections to process
+			(helm-raindrop-process-next-collection)
+		      ;; All collections processed
+		      (helm-raindrop-finish-all-collections))))))
     :error (cl-function
 	    (lambda (&key error-thrown response &allow-other-keys)
 	      (helm-raindrop-update-rate-limit-from-headers response)
 	      (if (helm-raindrop-should-retry-p (request-response-status-code response) retry-count)
-		  (helm-raindrop-handle-rate-limit-error response page retry-count)
-		(helm-raindrop-debug-log-request-error (request-response-url response) error-thrown))))))
+		  (helm-raindrop-handle-rate-limit-error response collection-id page retry-count)
+		;; Log error and continue with next collection
+		(helm-raindrop-debug-log-request-error (request-response-url response) error-thrown)
+		(if (helm-raindrop-next-collection-exist-p)
+		    ;; More collections to process
+		    (helm-raindrop-process-next-collection)
+		  ;; All collections processed
+		  (helm-raindrop-finish-all-collections)))))))
 
-(defun helm-raindrop-get-url (page)
+(defun helm-raindrop-normalize-collection-ids ()
+  "Normalize collection IDs to a list format.
+Return a list of collection ID strings."
+  (cond
+   ((null helm-raindrop-collection-ids) nil)
+   ((stringp helm-raindrop-collection-ids) (list helm-raindrop-collection-ids))
+   ((listp helm-raindrop-collection-ids) helm-raindrop-collection-ids)
+   (t (error "Invalid type for `helm-raindrop-collection-ids'"))))
+
+(defun helm-raindrop-get-current-collection-id ()
+  "Get the current collection ID being processed."
+  (car helm-raindrop-remaining-collection-ids))
+
+(defun helm-raindrop-next-collection-exist-p ()
+  "Return non-nil if there are more collections to process."
+  (cdr helm-raindrop-remaining-collection-ids))
+
+(defun helm-raindrop-process-next-collection ()
+  "Process the next collection in the list."
+  (setq helm-raindrop-remaining-collection-ids
+        (cdr helm-raindrop-remaining-collection-ids))
+  (if helm-raindrop-remaining-collection-ids
+      (helm-raindrop-http-request (car helm-raindrop-remaining-collection-ids) 0)))
+
+(defun helm-raindrop-finish-all-collections ()
+  "Called when all collections have been processed."
+  (let ((work-buffer (get-buffer helm-raindrop-work-buffer-name)))
+    (if (and work-buffer (> (buffer-size work-buffer) 0))
+        (with-current-buffer work-buffer
+          (write-region (point-min) (point-max) helm-raindrop-file))))
+  (helm-raindrop-debug-log-session-summary)
+  (helm-raindrop-cleanup-session))
+
+(defun helm-raindrop-cleanup-session ()
+  "Clean up session variables."
+  (setq helm-raindrop-remaining-collection-ids nil))
+
+(defun helm-raindrop-get-url (collection-id page)
   "Return Raindrop.io API endpoint for getting items.
-PAGE is a natural number.  If it doesn't set, it equal to 0."
+COLLECTION-ID is the current collection ID.
+PAGE is the current page number."
   (format "https://api.raindrop.io/rest/v1/raindrops/%s?%s"
-	  helm-raindrop-collection-id
+	  collection-id
 	  (url-build-query-string
 	   `((page ,page)
 	     (perpage ,helm-raindrop-api-per-page)
@@ -305,13 +371,14 @@ Argument RESPONSE-BODY is http response body as a json"
        helm-raindrop-rate-limit-reset
        (< (float-time) helm-raindrop-rate-limit-reset)))
 
-(defun helm-raindrop-wait-for-rate-limit-reset (page retry-count)
+(defun helm-raindrop-wait-for-rate-limit-reset (collection-id page retry-count)
   "Wait until rate limit resets and retry the request.
+COLLECTION-ID is the current collection ID.
 PAGE is the current page number.
 RETRY-COUNT is the current retry attempt."
   (let ((wait-time (max 0 (- helm-raindrop-rate-limit-reset (float-time)))))
     (helm-raindrop-debug-log-rate-limit-wait wait-time)
-    (run-at-time wait-time nil #'helm-raindrop-http-request page retry-count)))
+    (run-at-time wait-time nil #'helm-raindrop-http-request collection-id page retry-count)))
 
 (defun helm-raindrop-update-rate-limit-from-headers (response)
   "Update rate limit state from RESPONSE headers."
@@ -334,8 +401,9 @@ RETRY-COUNT is the current retry attempt."
   "Return t if STATUS-CODE indicates a rate limit error."
   (and status-code (= status-code helm-raindrop-http-status-rate-limit)))
 
-(defun helm-raindrop-handle-rate-limit-error (response page retry-count)
+(defun helm-raindrop-handle-rate-limit-error (response collection-id page retry-count)
   "Handle 429 rate limit error from RESPONSE.
+COLLECTION-ID is the current collection ID.
 PAGE is the current page number.
 RETRY-COUNT is the current retry attempt."
   (let* ((headers (request-response-headers response))
@@ -343,7 +411,7 @@ RETRY-COUNT is the current retry attempt."
 	 (wait-time (or (and retry-after (string-to-number retry-after))
 			helm-raindrop-default-retry-after)))
     (helm-raindrop-debug-log-rate-limit-retry wait-time (1+ retry-count))
-    (run-at-time wait-time nil #'helm-raindrop-http-request page (1+ retry-count))))
+    (run-at-time wait-time nil #'helm-raindrop-http-request collection-id page (1+ retry-count))))
 
 ;;; Debug
 
@@ -361,14 +429,18 @@ RETRY-COUNT is the current retry attempt."
   "Log successful completion of request.
 URL is the request URL."
   (if (eq helm-raindrop-debug-mode 'debug)
-      (message "[Raindrop] Succeed to GET %s (%0.1fsec) [%d/%d remaining] at %s."
-	       url
-	       (time-to-seconds
-		(time-subtract (current-time)
-			       helm-raindrop-debug-start-time))
-	       (or helm-raindrop-rate-limit-remaining 0)
-	       (or helm-raindrop-rate-limit-limit helm-raindrop-default-rate-limit)
-	       (format-time-string "%Y-%m-%d %H:%M:%S" (current-time)))))
+      (let ((total-count (length (helm-raindrop-normalize-collection-ids)))
+            (remaining-count (length helm-raindrop-remaining-collection-ids)))
+        (message "[Raindrop] Succeed to GET %s [%d/%d collections] (%0.1fsec) [rate limit: %d/%d] at %s."
+	         url
+	         (1+ (- total-count remaining-count))
+	         total-count
+	         (time-to-seconds
+		  (time-subtract (current-time)
+			         helm-raindrop-debug-start-time))
+	         (or helm-raindrop-rate-limit-remaining 0)
+	         (or helm-raindrop-rate-limit-limit helm-raindrop-default-rate-limit)
+	         (format-time-string "%Y-%m-%d %H:%M:%S" (current-time))))))
 
 (defun helm-raindrop-debug-log-request-error (url error-thrown)
   "Log error for failed request.
@@ -428,8 +500,8 @@ RETRY-COUNT is the current retry attempt."
   "Initialize `helm-raindrop'."
   (unless helm-raindrop-access-token
     (error "Variable `helm-raindrop-access-token' is nil"))
-  (unless helm-raindrop-collection-id
-    (error "Variable `helm-raindrop-collection-id' is nil"))
+  (unless helm-raindrop-collection-ids
+    (error "Variable `helm-raindrop-collection-ids' is nil"))
   (helm-raindrop-set-timer))
 
 (provide 'helm-raindrop)
