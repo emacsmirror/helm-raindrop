@@ -137,7 +137,7 @@ DO NOT SET VALUE MANUALLY.")
 (defun helm-raindrop-browse-url (candidate)
   "Action for Browse URL.
 Argument CANDIDATE a line string of a raindrop."
-  (string-match "\\[href:\\(.+\\)\\]" candidate)
+  (string-match "\\[href:\\(.*?\\)\\]" candidate)
   (browse-url (match-string 1 candidate)))
 
 (defun helm-raindrop-show-url (candidate)
