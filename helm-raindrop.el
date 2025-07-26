@@ -86,6 +86,27 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
   "Timer object for Raindrop.io caching will be stored here.
 DO NOT SET VALUE MANUALLY.")
 
+(defvar helm-raindrop-rate-limit-remaining nil
+  "Remaining number of requests before hitting rate limit.")
+
+(defvar helm-raindrop-rate-limit-limit nil
+  "Maximum number of requests allowed per hour.")
+
+(defvar helm-raindrop-rate-limit-reset nil
+  "Unix timestamp when the rate limit will reset.")
+
+(defconst helm-raindrop-max-retries 3
+  "Maximum number of retries for rate limited requests.")
+
+(defconst helm-raindrop-http-status-rate-limit 429
+  "HTTP status code for rate limit exceeded.")
+
+(defconst helm-raindrop-default-retry-after 2
+  "Default retry-after value in seconds when not specified in headers.")
+
+(defconst helm-raindrop-default-rate-limit 120
+  "Default API rate limit per hour when not specified in headers.")
+
 (defvar helm-raindrop-debug-start-time nil)
 (defvar helm-raindrop-debug-total-start-time nil)
 (defvar helm-raindrop-debug-request-count 0)
@@ -150,15 +171,28 @@ Argument CANDIDATE a line string of a raindrop."
 
 ;;; Process handler
 
-(defun helm-raindrop-http-request (&optional page)
+(defun helm-raindrop-http-request (&optional page retry-count)
   "Make a new HTTP request for create `helm-raindrop-file'.
-It is the first page if PAGE is nil."
-  (setq page (or page 0))
+It is the first page if PAGE is nil.
+RETRY-COUNT tracks the number of retry attempts."
+  (setq page (or page 0)
+	retry-count (or retry-count 0))
   (when (eq page 0)
     (if (get-buffer helm-raindrop-work-buffer-name)
 	(kill-buffer helm-raindrop-work-buffer-name))
     (get-buffer-create helm-raindrop-work-buffer-name)
+    (helm-raindrop-init-rate-limit-state)
     (helm-raindrop-debug-init-session))
+  ;; Check rate limit before making request
+  (if (helm-raindrop-rate-limit-exceeded-p)
+      (helm-raindrop-wait-for-rate-limit-reset page retry-count)
+    ;; Continue with the request if rate limit is not exceeded
+    (helm-raindrop-do-http-request page retry-count)))
+
+(defun helm-raindrop-do-http-request (page retry-count)
+  "Actually perform the HTTP request.
+PAGE is the current page number.
+RETRY-COUNT tracks the number of retry attempts."
   (helm-raindrop-debug-start-request)
   (request
     (helm-raindrop-get-url page)
@@ -166,6 +200,7 @@ It is the first page if PAGE is nil."
     :parser 'json-read
     :success (cl-function
 	      (lambda (&key data response &allow-other-keys)
+		(helm-raindrop-update-rate-limit-from-headers response)
 		(helm-raindrop-debug-log-request-success (request-response-url response))
 		(with-current-buffer (get-buffer helm-raindrop-work-buffer-name)
 		  (goto-char (point-max))
@@ -176,7 +211,10 @@ It is the first page if PAGE is nil."
 		    (helm-raindrop-debug-log-session-summary)))))
     :error (cl-function
 	    (lambda (&key error-thrown response &allow-other-keys)
-	      (helm-raindrop-debug-log-request-error (request-response-url response) error-thrown)))))
+	      (helm-raindrop-update-rate-limit-from-headers response)
+	      (if (helm-raindrop-should-retry-p (request-response-status-code response) retry-count)
+		  (helm-raindrop-handle-rate-limit-error response page retry-count)
+		(helm-raindrop-debug-log-request-error (request-response-url response) error-thrown))))))
 
 (defun helm-raindrop-get-url (page)
   "Return Raindrop.io API endpoint for getting items.
@@ -237,6 +275,61 @@ Argument RESPONSE-BODY is http response body as a json"
   "Return tags of ITEM, as an list."
   (append (cdr (assoc 'tags item)) nil))
 
+;;; Rate limit handler
+
+(defun helm-raindrop-init-rate-limit-state ()
+  "Initialize rate limit state variables."
+  (setq helm-raindrop-rate-limit-remaining nil
+	helm-raindrop-rate-limit-limit nil
+	helm-raindrop-rate-limit-reset nil))
+
+(defun helm-raindrop-rate-limit-exceeded-p ()
+  "Return t if rate limit is exceeded and we need to wait."
+  (and helm-raindrop-rate-limit-remaining
+       (= helm-raindrop-rate-limit-remaining 0)
+       helm-raindrop-rate-limit-reset
+       (< (float-time) helm-raindrop-rate-limit-reset)))
+
+(defun helm-raindrop-wait-for-rate-limit-reset (page retry-count)
+  "Wait until rate limit resets and retry the request.
+PAGE is the current page number.
+RETRY-COUNT is the current retry attempt."
+  (let ((wait-time (max 0 (- helm-raindrop-rate-limit-reset (float-time)))))
+    (helm-raindrop-debug-log-rate-limit-wait wait-time)
+    (run-at-time wait-time nil #'helm-raindrop-http-request page retry-count)))
+
+(defun helm-raindrop-update-rate-limit-from-headers (response)
+  "Update rate limit state from RESPONSE headers."
+  (let ((headers (request-response-headers response)))
+    (if-let ((limit (cdr (assoc 'x-ratelimit-limit headers))))
+	(setq helm-raindrop-rate-limit-limit (string-to-number limit)))
+    (if-let ((remaining (cdr (assoc 'x-ratelimit-remaining headers))))
+	(setq helm-raindrop-rate-limit-remaining (string-to-number remaining)))
+    (if-let ((reset (cdr (assoc 'x-ratelimit-reset headers))))
+	(setq helm-raindrop-rate-limit-reset (string-to-number reset)))))
+
+(defun helm-raindrop-should-retry-p (status-code retry-count)
+  "Return t if we should retry the request.
+STATUS-CODE is the HTTP status code.
+RETRY-COUNT is the current retry attempt."
+  (and (helm-raindrop-rate-limit-error-p status-code)
+       (< retry-count helm-raindrop-max-retries)))
+
+(defun helm-raindrop-rate-limit-error-p (status-code)
+  "Return t if STATUS-CODE indicates a rate limit error."
+  (and status-code (= status-code helm-raindrop-http-status-rate-limit)))
+
+(defun helm-raindrop-handle-rate-limit-error (response page retry-count)
+  "Handle 429 rate limit error from RESPONSE.
+PAGE is the current page number.
+RETRY-COUNT is the current retry attempt."
+  (let* ((headers (request-response-headers response))
+	 (retry-after (cdr (assoc 'retry-after headers)))
+	 (wait-time (or (and retry-after (string-to-number retry-after))
+			helm-raindrop-default-retry-after)))
+    (helm-raindrop-debug-log-rate-limit-retry wait-time (1+ retry-count))
+    (run-at-time wait-time nil #'helm-raindrop-http-request page (1+ retry-count))))
+
 ;;; Debug
 
 (defun helm-raindrop-debug-init-session ()
@@ -253,11 +346,13 @@ Argument RESPONSE-BODY is http response body as a json"
   "Log successful completion of request.
 URL is the request URL."
   (if (eq helm-raindrop-debug-mode 'debug)
-      (message "[Raindrop] Succeed to GET %s (%0.1fsec) at %s."
+      (message "[Raindrop] Succeed to GET %s (%0.1fsec) [%d/%d remaining] at %s."
 	       url
 	       (time-to-seconds
 		(time-subtract (current-time)
 			       helm-raindrop-debug-start-time))
+	       (or helm-raindrop-rate-limit-remaining 0)
+	       (or helm-raindrop-rate-limit-limit helm-raindrop-default-rate-limit)
 	       (format-time-string "%Y-%m-%d %H:%M:%S" (current-time)))))
 
 (defun helm-raindrop-debug-log-request-error (url error-thrown)
@@ -272,6 +367,22 @@ ERROR-THROWN is (ERROR-SYMBOL . DATA), or nil."
 		(time-subtract (current-time)
 			       helm-raindrop-debug-start-time))
 	       (format-time-string "%Y-%m-%d %H:%M:%S" (current-time)))))
+
+
+(defun helm-raindrop-debug-log-rate-limit-wait (wait-time)
+  "Log rate limit wait message.
+WAIT-TIME is the seconds to wait."
+  (if (memq helm-raindrop-debug-mode '(info debug))
+      (message "[Raindrop] Rate limit reached. Waiting %0.1f seconds..."
+	       wait-time)))
+
+(defun helm-raindrop-debug-log-rate-limit-retry (wait-time retry-count)
+  "Log rate limit retry message.
+WAIT-TIME is the seconds to wait.
+RETRY-COUNT is the current retry attempt."
+  (if (memq helm-raindrop-debug-mode '(info debug))
+      (message "[Raindrop] Rate limit error (429). Retrying in %d seconds... (attempt %d/%d)"
+	       wait-time retry-count helm-raindrop-max-retries)))
 
 (defun helm-raindrop-debug-log-session-summary ()
   "Log summary of all requests in the session."
