@@ -260,7 +260,7 @@ RETRY-COUNT: Number of retries attempted."
   (setq helm-raindrop--remaining-collection-ids
         (helm-raindrop-normalize-collection-ids))
   (unless helm-raindrop--remaining-collection-ids
-    (error "No collection IDs configured. Please set `helm-raindrop-collection-ids'.")))
+    (error "No collection IDs configured.  Please set `helm-raindrop-collection-ids'")))
 
 (defun helm-raindrop-normalize-collection-ids ()
   "Convert collection IDs to list format."
@@ -326,7 +326,7 @@ RETRY-COUNT: Number of retries attempted."
 	'utf-8)))))
 
 (defun helm-raindrop-next-page-exist-p (response-body)
-  "Return non-nil if RESPONSE-BODY contains items."
+  "Return non-nil if RESPONSE-BODY contain items."
   (let ((items (helm-raindrop-items response-body)))
     (> (length items) 0)))
 
@@ -540,7 +540,7 @@ RETRY-COUNT: Attempt number."
 
 ;;;###autoload
 (defun helm-raindrop-initialize ()
-  "Initialize helm-raindrop and start cache updates."
+  "Initialize `helm-raindrop' and start cache update."
   (unless helm-raindrop-access-token
     (error "Variable `helm-raindrop-access-token' is nil"))
   (unless helm-raindrop-collection-ids
