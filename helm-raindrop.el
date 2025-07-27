@@ -419,7 +419,7 @@ RETRY-COUNT is the current retry attempt."
   (let* ((headers (request-response-headers response))
 	 (retry-after (cdr (assoc 'retry-after headers)))
 	 (wait-seconds (or (and retry-after (string-to-number retry-after))
-			helm-raindrop--default-retry-after)))
+			   helm-raindrop--default-retry-after)))
     (helm-raindrop-debug-page-rate-limit-retry wait-seconds (1+ retry-count))
     (run-at-time wait-seconds nil #'helm-raindrop-do-http-request collection-id page (1+ retry-count))))
 
@@ -448,7 +448,7 @@ URL is the request URL.
 RESPONSE-BODY is the parsed JSON response."
   (if (eq page 0)
       (setq helm-raindrop--debug-current-collection-total-items
-            (or (helm-raindrop-total-count response-body) 0))
+	    (helm-raindrop-total-count response-body))
     (cl-incf helm-raindrop--debug-current-collection-processed-items
              (length (helm-raindrop-items response-body)))
     (if (eq helm-raindrop-debug-mode 'debug)
