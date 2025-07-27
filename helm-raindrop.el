@@ -21,7 +21,12 @@
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
-;; helm-raindrop.el provides a helm interface to Raindrop.io (https://raindrop.io/).
+;;
+;; This package provides a Helm interface for browsing and searching
+;; Raindrop.io items.  It supports multiple collections, nested collections,
+;; automatic caching, and rate limit handling.
+;;
+;; Basic usage: M-x helm-raindrop RET
 
 ;;; Code:
 
@@ -31,52 +36,47 @@
 (require 'request)
 
 (defgroup helm-raindrop nil
-  "Raindrop.io with helm interface"
+  "Helm interface for Raindrop.io."
   :prefix "helm-raindrop-"
   :group 'helm)
 
 (defcustom helm-raindrop-access-token nil
-  "Your raindrop access token.
-You can create on https://app.raindrop.io/settings/integrations"
+  "Raindrop.io test token for authentication.
+Create one at https://app.raindrop.io/settings/integrations"
   :type '(choice (const nil)
 		 string)
   :group 'helm-raindrop)
 
 (defcustom helm-raindrop-collection-ids nil
-  "The IDs of the collections you want to collect.
-If the collection URL is https://app.raindrop.io/my/123456, then it is 123456.
-Can be either a single string or a list of strings for multiple collections.
-
-Examples:
-  \"123456\"                ;; single collection
-  '(\"123456\" \"789012\")  ;; multiple collections"
+  "Collection IDs to fetch items from.
+Can be a string (\"123456\") or list of strings ('(\"123456\" \"789012\")).
+For https://app.raindrop.io/my/123456, use \"123456\".
+Special values: \"0\" for all items, \"-1\" for unsorted, \"-99\" for trash."
   :type '(choice (const nil)
 		 string
 		 (repeat string))
   :group 'helm-raindrop)
 
 (defcustom helm-raindrop-include-nested-collections t
-  "Include items from nested collections when non-nil."
+  "Whether to include items from nested collections."
   :type 'boolean
   :group 'helm-raindrop)
 
 (defcustom helm-raindrop-file
   (expand-file-name "helm-raindrop" user-emacs-directory)
-  "A cache file get items with `helm-raindrop-search-query'."
+  "Cache file path for storing Raindrop items."
   :type '(choice (const nil)
 		 string)
   :group 'helm-raindrop)
 
 (defcustom helm-raindrop-interval (* 3 60 60)
-  "Number of seconds to call `helm-raindrop-http-request'."
+  "Seconds between automatic cache updates (default: 3 hours)."
   :type 'integer
   :group 'helm-raindrop)
 
 (defcustom helm-raindrop-debug-mode nil
-  "Debug logging level for HTTP requests.
-nil: No logging
-`info': Summary only
-`debug': All debug messages"
+  "Debug logging level for API requests.
+nil: No logging, `info': Summary only, `debug': All messages."
   :type '(choice (const :tag "No logging" nil)
                  (const :tag "Info - Summary only" info)
                  (const :tag "Debug - All messages" debug))
@@ -85,7 +85,7 @@ nil: No logging
 ;;; Internal Constants
 
 (defconst helm-raindrop--work-buffer-name " *helm-raindrop-work*"
-  "Working buffer name of `helm-raindrop-http-request'.")
+  "Buffer name for storing fetched items.")
 
 (defconst helm-raindrop--http-status-ratelimit 429
   "HTTP status code for rate limit exceeded.")
@@ -105,7 +105,8 @@ nil: No logging
   "Page size of Raindrop.io API.
 See https://developer.raindrop.io/v1/raindrops/multiple")
 
-(defvar helm-raindrop--full-frame helm-full-frame)
+(defvar helm-raindrop--full-frame helm-full-frame
+  "Whether to use full frame for Helm session.")
 
 (defvar helm-raindrop--remaining-collection-ids nil
   "Remaining collection IDs to process.")
@@ -120,8 +121,7 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
   "Unix timestamp when the rate limit will reset.")
 
 (defvar helm-raindrop--timer nil
-  "Timer object for Raindrop.io caching will be stored here.
-DO NOT SET VALUE MANUALLY.")
+  "Timer object for automatic cache updates.")
 
 (defvar helm-raindrop--debug-start-time nil
   "Start time for debugging individual API requests.")
@@ -144,7 +144,7 @@ DO NOT SET VALUE MANUALLY.")
 ;;; Macro
 
 (defmacro helm-raindrop-file-check (&rest body)
-  "The BODY is evaluated only when `helm-raindrop-file' exists."
+  "Execute BODY only if the cache file exists."
   `(if (file-exists-p helm-raindrop-file)
        ,@body
      (message "%s not found. Please wait up to %d minutes."
@@ -153,7 +153,7 @@ DO NOT SET VALUE MANUALLY.")
 ;;; Helm source
 
 (defun helm-raindrop-load ()
-  "Load `helm-raindrop-file'."
+  "Load cached items into Helm candidate buffer."
   (helm-raindrop-file-check
    (with-current-buffer (helm-candidate-buffer 'global)
      (let ((coding-system-for-read 'utf-8))
@@ -162,23 +162,21 @@ DO NOT SET VALUE MANUALLY.")
 (defvar helm-raindrop-action
   '(("Browse URL" . helm-raindrop-browse-url)
     ("Show URL" . helm-raindrop-show-url)
-    ("Show NOTE" . helm-raindrop-show-note)))
+    ("Show NOTE" . helm-raindrop-show-note))
+  "Actions available for Raindrop items.")
 
 (defun helm-raindrop-browse-url (candidate)
-  "Action for Browse URL.
-Argument CANDIDATE a line string of a raindrop."
+  "Browse the URL of the selected CANDIDATE."
   (string-match "\\[href:\\(.*?\\)\\]" candidate)
   (browse-url (match-string 1 candidate)))
 
 (defun helm-raindrop-show-url (candidate)
-  "Action for Show URL.
-Argument CANDIDATE a line string of a raindrop."
+  "Display the URL of the selected CANDIDATE."
   (string-match "\\[href:\\(.*?\\)\\]" candidate)
   (message (match-string 1 candidate)))
 
 (defun helm-raindrop-show-note (candidate)
-  "Action for Show NOTE.
-Argument CANDIDATE a line string of a raindrop."
+  "Display the note of the selected CANDIDATE."
   (string-match "\\[note:\\(.*?\\)\\]" candidate)
   (message (match-string 1 candidate)))
 
@@ -188,11 +186,11 @@ Argument CANDIDATE a line string of a raindrop."
     :action 'helm-raindrop-action
     :multiline t
     :migemo t)
-  "Helm source for Raindrop.io.")
+  "Helm source for searching Raindrop.io items.")
 
 ;;;###autoload
 (defun helm-raindrop ()
-  "Search Raindrops using `helm'."
+  "Search Raindrop.io items using Helm interface."
   (interactive)
   (let ((helm-full-frame helm-raindrop--full-frame))
     (helm-raindrop-file-check
@@ -202,7 +200,7 @@ Argument CANDIDATE a line string of a raindrop."
 ;;; Process handler
 
 (defun helm-raindrop-http-request ()
-  "Initialize and start HTTP requests for creating `helm-raindrop-file'."
+  "Fetch all items from configured collections and cache them."
   (helm-raindrop-debug-session-start)
   (if (get-buffer helm-raindrop--work-buffer-name)
       (kill-buffer helm-raindrop--work-buffer-name))
@@ -216,10 +214,10 @@ Argument CANDIDATE a line string of a raindrop."
     (helm-raindrop-do-http-request collection-id page retry-count)))
 
 (defun helm-raindrop-do-http-request (collection-id page retry-count)
-  "Actually perform the HTTP request.
-COLLECTION-ID is the current collection ID.
-PAGE is the current page number.
-RETRY-COUNT tracks the number of retry attempts."
+  "Perform HTTP request to Raindrop.io API.
+COLLECTION-ID: Collection to fetch from.
+PAGE: Page number (0-indexed).
+RETRY-COUNT: Number of retries attempted."
   ;; Check rate limit before making request
   (if (helm-raindrop-ratelimit-exceeded-p)
       (helm-raindrop-wait-for-ratelimit-reset collection-id page retry-count)
@@ -258,15 +256,14 @@ RETRY-COUNT tracks the number of retry attempts."
                     (helm-raindrop-session-finish))))))))
 
 (defun helm-raindrop-init-remaining-collection-ids ()
-  "Initialize remaining collection IDs and validate configuration."
+  "Initialize collection IDs queue and validate configuration."
   (setq helm-raindrop--remaining-collection-ids
         (helm-raindrop-normalize-collection-ids))
   (unless helm-raindrop--remaining-collection-ids
     (error "No collection IDs configured. Please set `helm-raindrop-collection-ids'.")))
 
 (defun helm-raindrop-normalize-collection-ids ()
-  "Normalize collection IDs to a list format.
-Return a list of collection ID strings."
+  "Convert collection IDs to list format."
   (cond
    ((null helm-raindrop-collection-ids) nil)
    ((stringp helm-raindrop-collection-ids) (list helm-raindrop-collection-ids))
@@ -274,15 +271,15 @@ Return a list of collection ID strings."
    (t (error "Invalid type for `helm-raindrop-collection-ids'"))))
 
 (defun helm-raindrop-get-current-collection-id ()
-  "Get the current collection ID being processed."
+  "Return current collection ID."
   (car helm-raindrop--remaining-collection-ids))
 
 (defun helm-raindrop-next-collection-exist-p ()
-  "Return non-nil if there are more collections to process."
+  "Return non-nil if more collections remain."
   (cdr helm-raindrop--remaining-collection-ids))
 
 (defun helm-raindrop-process-next-collection ()
-  "Process the next collection in the list."
+  "Start processing next collection."
   (helm-raindrop-debug-collection-start)
   (setq helm-raindrop--remaining-collection-ids
         (cdr helm-raindrop--remaining-collection-ids))
@@ -290,7 +287,7 @@ Return a list of collection ID strings."
       (helm-raindrop-do-http-request (car helm-raindrop--remaining-collection-ids) 0 0)))
 
 (defun helm-raindrop-session-finish ()
-  "Called when all collections have been processed."
+  "Finalize session and save cache file."
   (let ((work-buffer (get-buffer helm-raindrop--work-buffer-name)))
     (if (and work-buffer (> (buffer-size work-buffer) 0))
         (with-current-buffer work-buffer
@@ -299,13 +296,11 @@ Return a list of collection ID strings."
   (helm-raindrop-debug-session-finish))
 
 (defun helm-raindrop-cleanup-session ()
-  "Clean up session variables."
+  "Reset session variables."
   (setq helm-raindrop--remaining-collection-ids nil))
 
 (defun helm-raindrop-get-url (collection-id page)
-  "Return Raindrop.io API endpoint for getting items.
-COLLECTION-ID is the current collection ID.
-PAGE is the current page number."
+  "Build API URL for COLLECTION-ID and PAGE."
   (format "https://api.raindrop.io/rest/v1/raindrops/%s?%s"
 	  collection-id
 	  (url-build-query-string
@@ -314,8 +309,7 @@ PAGE is the current page number."
 	     ,@(if helm-raindrop-include-nested-collections '((nested "true")))))))
 
 (defun helm-raindrop-insert-items (response-body)
-  "Insert Raindrop items as the format of `helm-raindrop-file'.
-Argument RESPONSE-BODY is http response body as a json"
+  "Format and insert items from RESPONSE-BODY into buffer."
   (let ((items (helm-raindrop-items response-body))
 	item title url note format-tags)
     (dotimes (i (length items))
@@ -332,50 +326,50 @@ Argument RESPONSE-BODY is http response body as a json"
 	'utf-8)))))
 
 (defun helm-raindrop-next-page-exist-p (response-body)
-  "Return whether the next page exists from RESPONSE-BODY."
+  "Return non-nil if RESPONSE-BODY contains items."
   (let ((items (helm-raindrop-items response-body)))
     (> (length items) 0)))
 
 ;;; Utilities
 
 (defun helm-raindrop-x-ratelimit-limit (response)
-  "Get x-ratelimit-limit value from RESPONSE headers."
+  "Extract rate limit from RESPONSE headers."
   (let ((headers (request-response-headers response)))
     (cdr (assoc 'x-ratelimit-limit headers))))
 
 (defun helm-raindrop-x-ratelimit-remaining (response)
-  "Get x-ratelimit-remaining value from RESPONSE headers."
+  "Extract remaining requests from RESPONSE headers."
   (let ((headers (request-response-headers response)))
     (cdr (assoc 'x-ratelimit-remaining headers))))
 
 (defun helm-raindrop-x-ratelimit-reset (response)
-  "Get x-ratelimit-reset value from RESPONSE headers."
+  "Extract rate limit reset time from RESPONSE headers."
   (let ((headers (request-response-headers response)))
     (cdr (assoc 'x-ratelimit-reset headers))))
 
 (defun helm-raindrop-retry-after (response)
-  "Get retry-after value from RESPONSE headers."
+  "Extract retry-after seconds from RESPONSE headers."
   (let ((headers (request-response-headers response)))
     (cdr (assoc 'retry-after headers))))
 
 (defun helm-raindrop-items (response-body)
-  "Return items from RESPONSE-BODY."
+  "Extract items array from RESPONSE-BODY."
   (cdr (assoc 'items response-body)))
 
 (defun helm-raindrop-item-title (item)
-  "Return a name of ITEM."
+  "Extract title from ITEM."
   (cdr (assoc 'title item)))
 
 (defun helm-raindrop-item-url (item)
-  "Return a url of ITEM."
+  "Extract URL from ITEM."
   (cdr (assoc 'link item)))
 
 (defun helm-raindrop-item-note (item)
-  "Return a note of ITEM."
+  "Extract note from ITEM."
   (cdr (assoc 'note item)))
 
 (defun helm-raindrop-item-format-tags (item)
-  "Return formatted tags of ITEM."
+  "Format tags from ITEM as bracketed string."
   (let ((result ""))
     (mapc
      (lambda (tag)
@@ -384,39 +378,37 @@ Argument RESPONSE-BODY is http response body as a json"
     (string-trim result)))
 
 (defun helm-raindrop-item-tags (item)
-  "Return tags of ITEM, as an list."
+  "Extract tags from ITEM as list."
   (append (cdr (assoc 'tags item)) nil))
 
 (defun helm-raindrop-total-count (response-body)
-  "Return total count from RESPONSE-BODY."
+  "Extract total item count from RESPONSE-BODY."
   (cdr (assoc 'count response-body)))
 
 ;;; Rate limit handler
 
 (defun helm-raindrop-init-ratelimit-state ()
-  "Initialize rate limit state variables."
+  "Reset rate limit tracking variables."
   (setq helm-raindrop--ratelimit-remaining nil
 	helm-raindrop--ratelimit-limit nil
 	helm-raindrop--ratelimit-reset nil))
 
 (defun helm-raindrop-ratelimit-exceeded-p ()
-  "Return t if rate limit is exceeded and we need to wait."
+  "Check if rate limit is exceeded."
   (and helm-raindrop--ratelimit-remaining
        (= helm-raindrop--ratelimit-remaining 0)
        helm-raindrop--ratelimit-reset
        (< (float-time) helm-raindrop--ratelimit-reset)))
 
 (defun helm-raindrop-wait-for-ratelimit-reset (collection-id page retry-count)
-  "Wait until rate limit resets and retry the request.
-COLLECTION-ID is the current collection ID.
-PAGE is the current page number.
-RETRY-COUNT is the current retry attempt."
+  "Schedule retry after rate limit reset.
+COLLECTION-ID, PAGE, and RETRY-COUNT are passed to retry."
   (let ((wait-seconds (max 0 (- helm-raindrop--ratelimit-reset (float-time)))))
     (helm-raindrop-debug-page-ratelimit-wait wait-seconds)
     (run-at-time wait-seconds nil #'helm-raindrop-do-http-request collection-id page retry-count)))
 
 (defun helm-raindrop-update-ratelimit-from-headers (response)
-  "Update rate limit state from RESPONSE headers."
+  "Update rate limit variables from RESPONSE."
   (if-let ((limit (helm-raindrop-x-ratelimit-limit response)))
       (setq helm-raindrop--ratelimit-limit (string-to-number limit)))
   (if-let ((remaining (helm-raindrop-x-ratelimit-remaining response)))
@@ -425,21 +417,20 @@ RETRY-COUNT is the current retry attempt."
       (setq helm-raindrop--ratelimit-reset (string-to-number reset))))
 
 (defun helm-raindrop-should-retry-p (status-code retry-count)
-  "Return t if we should retry the request.
-STATUS-CODE is the HTTP status code.
-RETRY-COUNT is the current retry attempt."
+  "Check if request should be retried.
+STATUS-CODE: HTTP response code.
+RETRY-COUNT: Current attempt number."
   (and (helm-raindrop-ratelimit-error-p status-code)
        (< retry-count helm-raindrop--max-retries)))
 
 (defun helm-raindrop-ratelimit-error-p (status-code)
-  "Return t if STATUS-CODE indicates a rate limit error."
+  "Check if STATUS-CODE is 429 (rate limit)."
   (and status-code (= status-code helm-raindrop--http-status-ratelimit)))
 
 (defun helm-raindrop-handle-ratelimit-error (response collection-id page retry-count)
-  "Handle 429 rate limit error from RESPONSE.
-COLLECTION-ID is the current collection ID.
-PAGE is the current page number.
-RETRY-COUNT is the current retry attempt."
+  "Handle rate limit error and schedule retry.
+RESPONSE: HTTP response object.
+COLLECTION-ID, PAGE, RETRY-COUNT: Request parameters."
   (let* ((retry-after (helm-raindrop-retry-after response))
 	 (wait-seconds (or (and retry-after (string-to-number retry-after))
 			   helm-raindrop--default-retry-after)))
@@ -449,27 +440,27 @@ RETRY-COUNT is the current retry attempt."
 ;;; Debug
 
 (defun helm-raindrop-debug-session-start ()
-  "Initialize debug information for the session."
+  "Initialize debug counters for session."
   (setq helm-raindrop--debug-total-start-time (current-time)
 	helm-raindrop--debug-request-count 0
 	helm-raindrop--debug-total-items 0)
   (helm-raindrop-debug-collection-start))
 
 (defun helm-raindrop-debug-collection-start ()
-  "Initialize debug information for a collection."
+  "Reset debug counters for new collection."
   (setq helm-raindrop--debug-current-collection-processed-items 0
         helm-raindrop--debug-current-collection-total-items 0))
 
 (defun helm-raindrop-debug-page-start ()
-  "Initialize debug information for a page request."
+  "Record start of API request."
   (cl-incf helm-raindrop--debug-request-count)
   (setq helm-raindrop--debug-start-time (current-time)))
 
 (defun helm-raindrop-debug-page-finish (page url response-body)
-  "Record successful page request information.
-PAGE is the current page number.
-URL is the request URL.
-RESPONSE-BODY is the parsed JSON response."
+  "Log successful API request.
+PAGE: Current page number.
+URL: Request URL.
+RESPONSE-BODY: Parsed JSON response."
   (if (eq page 0)
       (setq helm-raindrop--debug-current-collection-total-items
 	    (helm-raindrop-total-count response-body))
@@ -493,9 +484,9 @@ RESPONSE-BODY is the parsed JSON response."
 	           (format-time-string "%Y-%m-%d %H:%M:%S" (current-time)))))))
 
 (defun helm-raindrop-debug-page-error (url error-thrown)
-  "Record failed page request information.
-URL is the request URL.
-ERROR-THROWN is (ERROR-SYMBOL . DATA), or nil."
+  "Log failed API request.
+URL: Request URL.
+ERROR-THROWN: Error data."
   (if (eq helm-raindrop-debug-mode 'debug)
       (message "[Raindrop] Fail %S to GET %s (%0.1fsec) at %s."
 	       error-thrown
@@ -506,22 +497,22 @@ ERROR-THROWN is (ERROR-SYMBOL . DATA), or nil."
 	       (format-time-string "%Y-%m-%d %H:%M:%S" (current-time)))))
 
 (defun helm-raindrop-debug-page-ratelimit-wait (wait-seconds)
-  "Record rate limit wait information.
-WAIT-SECONDS is the seconds to wait."
+  "Log rate limit wait.
+WAIT-SECONDS: Delay before retry."
   (if (memq helm-raindrop-debug-mode '(info debug))
       (message "[Raindrop] Rate limit reached. Waiting %0.1f seconds..."
 	       wait-seconds)))
 
 (defun helm-raindrop-debug-page-ratelimit-retry (wait-seconds retry-count)
-  "Record rate limit retry information.
-WAIT-SECONDS is the seconds to wait.
-RETRY-COUNT is the current retry attempt."
+  "Log rate limit retry.
+WAIT-SECONDS: Delay before retry.
+RETRY-COUNT: Attempt number."
   (if (memq helm-raindrop-debug-mode '(info debug))
       (message "[Raindrop] Rate limit error (429). Retrying in %d seconds... (attempt %d/%d)"
 	       wait-seconds retry-count helm-raindrop--max-retries)))
 
 (defun helm-raindrop-debug-session-finish ()
-  "Record session completion information."
+  "Log session completion summary."
   (if (memq helm-raindrop-debug-mode '(info debug))
       (message "[Raindrop] Total: %d requests completed for %d collections (%d items) in %0.1fsec at %s."
 	       helm-raindrop--debug-request-count
@@ -535,21 +526,21 @@ RETRY-COUNT is the current retry attempt."
 ;;; Timer
 
 (defun helm-raindrop-set-timer ()
-  "Set timer."
+  "Start automatic cache update timer."
   (setq helm-raindrop--timer
 	(run-at-time "0 sec"
 		     helm-raindrop-interval
 		     #'helm-raindrop-http-request)))
 
 (defun helm-raindrop-cancel-timer ()
-  "Cancel timer."
+  "Stop automatic cache update timer."
   (when helm-raindrop--timer
     (cancel-timer helm-raindrop--timer)
     (setq helm-raindrop--timer nil)))
 
 ;;;###autoload
 (defun helm-raindrop-initialize ()
-  "Initialize `helm-raindrop'."
+  "Initialize helm-raindrop and start cache updates."
   (unless helm-raindrop-access-token
     (error "Variable `helm-raindrop-access-token' is nil"))
   (unless helm-raindrop-collection-ids
