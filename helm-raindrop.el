@@ -138,6 +138,9 @@ DO NOT SET VALUE MANUALLY.")
 (defvar helm-raindrop--debug-current-collection-total-items 0
   "Total number of items in the current collection.")
 
+(defvar helm-raindrop--debug-total-items 0
+  "Total number of items processed across all collections.")
+
 ;;; Macro
 
 (defmacro helm-raindrop-file-check (&rest body)
@@ -448,7 +451,8 @@ RETRY-COUNT is the current retry attempt."
 (defun helm-raindrop-debug-session-start ()
   "Initialize debug information for the session."
   (setq helm-raindrop--debug-total-start-time (current-time)
-	helm-raindrop--debug-request-count 0)
+	helm-raindrop--debug-request-count 0
+	helm-raindrop--debug-total-items 0)
   (helm-raindrop-debug-collection-start))
 
 (defun helm-raindrop-debug-collection-start ()
@@ -469,8 +473,9 @@ RESPONSE-BODY is the parsed JSON response."
   (if (eq page 0)
       (setq helm-raindrop--debug-current-collection-total-items
 	    (helm-raindrop-total-count response-body))
-    (cl-incf helm-raindrop--debug-current-collection-processed-items
-             (length (helm-raindrop-items response-body)))
+    (let ((items-count (length (helm-raindrop-items response-body))))
+      (cl-incf helm-raindrop--debug-current-collection-processed-items items-count)
+      (cl-incf helm-raindrop--debug-total-items items-count))
     (if (eq helm-raindrop-debug-mode 'debug)
 	(let ((total-collections (length (helm-raindrop-normalize-collection-ids)))
               (remaining-collections (length helm-raindrop--remaining-collection-ids)))
@@ -518,8 +523,10 @@ RETRY-COUNT is the current retry attempt."
 (defun helm-raindrop-debug-session-finish ()
   "Record session completion information."
   (if (memq helm-raindrop-debug-mode '(info debug))
-      (message "[Raindrop] Total: %d requests completed in %0.1fsec at %s."
+      (message "[Raindrop] Total: %d requests completed for %d collections (%d items) in %0.1fsec at %s."
 	       helm-raindrop--debug-request-count
+	       (length (helm-raindrop-normalize-collection-ids))
+	       helm-raindrop--debug-total-items
 	       (time-to-seconds
 		(time-subtract (current-time)
 			       helm-raindrop--debug-total-start-time))
