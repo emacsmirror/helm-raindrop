@@ -16,7 +16,7 @@
 
 `helm-raindrop.el` provides a Helm interface for [Raindrop.io](https://raindrop.io/).
 
-You can open Raindrop items to the web browser using Helm interface.
+You can browse and search your Raindrop.io items using Helm interface.
 
 ## Requirements
 
@@ -107,9 +107,13 @@ This source provides:
     - You can create one at https://app.raindrop.io/settings/integrations
     - This is a required setting
 - `helm-raindrop-collection-ids` (default: `nil`)
-    - The IDs of the collections you want to collect
-    - If the collection URL is `https://app.raindrop.io/my/123456`, then it is `123456`
+    - Collection IDs to fetch items from
+    - If the collection URL is `https://app.raindrop.io/my/123456`, then use `"123456"`
     - Can be either a single string or a list of strings for multiple collections
+    - Special values:
+        - `"0"`: All items (except trash)
+        - `"-1"`: Unsorted items
+        - `"-99"`: Trash items
     - Examples:
         - `"123456"` (single collection)
         - `'("123456" "789012")` (multiple collections)
@@ -118,16 +122,16 @@ This source provides:
 ### Optional Settings
 
 - `helm-raindrop-include-nested-collections` (default: `t`)
-    - Include items from nested collections when non-nil
+    - Whether to include items from nested collections
 - `helm-raindrop-file` (default: `~/.emacs.d/helm-raindrop`)
-    - A cache file to store Raindrop items
+    - Cache file path for storing Raindrop items
     - This file is automatically updated at specified intervals
 - `helm-raindrop-interval` (default: `10800` = 3 hours)
     - Number of seconds between automatic cache updates
     - The cache is refreshed by fetching items from Raindrop.io API
 - `helm-raindrop-debug-mode` (default: `nil`)
-    - Debug logging level for HTTP requests
+    - Debug logging level for API requests
     - Available options:
       - `nil`: No logging
       - `'info`: Summary only
-      - `'debug`: All debug messages
+      - `'debug`: All messages
