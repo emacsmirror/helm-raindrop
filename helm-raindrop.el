@@ -333,6 +333,28 @@ Argument RESPONSE-BODY is http response body as a json"
   (let ((items (helm-raindrop-items response-body)))
     (> (length items) 0)))
 
+;;; Utilities
+
+(defun helm-raindrop-x-ratelimit-limit (response)
+  "Get x-ratelimit-limit value from RESPONSE headers."
+  (let ((headers (request-response-headers response)))
+    (cdr (assoc 'x-ratelimit-limit headers))))
+
+(defun helm-raindrop-x-ratelimit-remaining (response)
+  "Get x-ratelimit-remaining value from RESPONSE headers."
+  (let ((headers (request-response-headers response)))
+    (cdr (assoc 'x-ratelimit-remaining headers))))
+
+(defun helm-raindrop-x-ratelimit-reset (response)
+  "Get x-ratelimit-reset value from RESPONSE headers."
+  (let ((headers (request-response-headers response)))
+    (cdr (assoc 'x-ratelimit-reset headers))))
+
+(defun helm-raindrop-retry-after (response)
+  "Get retry-after value from RESPONSE headers."
+  (let ((headers (request-response-headers response)))
+    (cdr (assoc 'retry-after headers))))
+
 (defun helm-raindrop-items (response-body)
   "Return items from RESPONSE-BODY."
   (cdr (assoc 'items response-body)))
@@ -392,13 +414,12 @@ RETRY-COUNT is the current retry attempt."
 
 (defun helm-raindrop-update-rate-limit-from-headers (response)
   "Update rate limit state from RESPONSE headers."
-  (let ((headers (request-response-headers response)))
-    (if-let ((limit (cdr (assoc 'x-ratelimit-limit headers))))
-	(setq helm-raindrop--rate-limit-limit (string-to-number limit)))
-    (if-let ((remaining (cdr (assoc 'x-ratelimit-remaining headers))))
-	(setq helm-raindrop--rate-limit-remaining (string-to-number remaining)))
-    (if-let ((reset (cdr (assoc 'x-ratelimit-reset headers))))
-	(setq helm-raindrop--rate-limit-reset (string-to-number reset)))))
+  (if-let ((limit (helm-raindrop-x-ratelimit-limit response)))
+      (setq helm-raindrop--rate-limit-limit (string-to-number limit)))
+  (if-let ((remaining (helm-raindrop-x-ratelimit-remaining response)))
+      (setq helm-raindrop--rate-limit-remaining (string-to-number remaining)))
+  (if-let ((reset (helm-raindrop-x-ratelimit-reset response)))
+      (setq helm-raindrop--rate-limit-reset (string-to-number reset))))
 
 (defun helm-raindrop-should-retry-p (status-code retry-count)
   "Return t if we should retry the request.
@@ -416,8 +437,7 @@ RETRY-COUNT is the current retry attempt."
 COLLECTION-ID is the current collection ID.
 PAGE is the current page number.
 RETRY-COUNT is the current retry attempt."
-  (let* ((headers (request-response-headers response))
-	 (retry-after (cdr (assoc 'retry-after headers)))
+  (let* ((retry-after (helm-raindrop-retry-after response))
 	 (wait-seconds (or (and retry-after (string-to-number retry-after))
 			   helm-raindrop--default-retry-after)))
     (helm-raindrop-debug-page-rate-limit-retry wait-seconds (1+ retry-count))
