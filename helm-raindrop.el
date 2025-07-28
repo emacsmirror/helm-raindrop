@@ -445,7 +445,7 @@ COLLECTION-ID, PAGE, RETRY-COUNT: Request parameters."
 
 (defsubst helm-raindrop-format-current-time ()
   "Format current time as \"YYYY-MM-DD HH:MM:SS\" string."
-  (format-time-string "%F %T" (current-time)))
+  (format-time-string "%F %T"))
 
 (defun helm-raindrop-debug-session-start ()
   "Initialize debug counters for session."
