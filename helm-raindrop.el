@@ -481,7 +481,7 @@ RESPONSE-BODY: Parsed JSON response."
 			           helm-raindrop--debug-start-time))
 	           (or helm-raindrop--ratelimit-remaining 0)
 	           (or helm-raindrop--ratelimit-limit helm-raindrop--default-ratelimit)
-	           (format-time-string "%Y-%m-%d %H:%M:%S" (current-time)))))))
+	           (format-time-string "%F %T" (current-time)))))))
 
 (defun helm-raindrop-debug-page-error (url error-thrown)
   "Log failed API request.
@@ -494,7 +494,7 @@ ERROR-THROWN: Error data."
 	       (time-to-seconds
 		(time-subtract (current-time)
 			       helm-raindrop--debug-start-time))
-	       (format-time-string "%Y-%m-%d %H:%M:%S" (current-time)))))
+	       (format-time-string "%F %T" (current-time)))))
 
 (defun helm-raindrop-debug-page-ratelimit-wait (wait-seconds)
   "Log rate limit wait.
@@ -521,7 +521,7 @@ RETRY-COUNT: Attempt number."
 	       (time-to-seconds
 		(time-subtract (current-time)
 			       helm-raindrop--debug-total-start-time))
-	       (format-time-string "%Y-%m-%d %H:%M:%S" (current-time)))))
+	       (format-time-string "%F %T" (current-time)))))
 
 ;;; Timer
 
