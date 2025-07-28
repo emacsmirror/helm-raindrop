@@ -439,6 +439,14 @@ COLLECTION-ID, PAGE, RETRY-COUNT: Request parameters."
 
 ;;; Debug
 
+(defsubst helm-raindrop-elapsed-seconds (time)
+  "Calculate elapsed seconds since TIME."
+  (time-to-seconds (time-subtract (current-time) time)))
+
+(defsubst helm-raindrop-format-current-time ()
+  "Format current time as \"YYYY-MM-DD HH:MM:SS\" string."
+  (format-time-string "%F %T" (current-time)))
+
 (defun helm-raindrop-debug-session-start ()
   "Initialize debug counters for session."
   (setq helm-raindrop--debug-total-start-time (current-time)
@@ -476,12 +484,10 @@ RESPONSE-BODY: Parsed JSON response."
 	           total-collections
                    helm-raindrop--debug-current-collection-processed-items
                    helm-raindrop--debug-current-collection-total-items
-	           (time-to-seconds
-		    (time-subtract (current-time)
-			           helm-raindrop--debug-start-time))
+		   (helm-raindrop-elapsed-seconds helm-raindrop--debug-start-time)
 	           (or helm-raindrop--ratelimit-remaining 0)
 	           (or helm-raindrop--ratelimit-limit helm-raindrop--default-ratelimit)
-	           (format-time-string "%F %T" (current-time)))))))
+		   (helm-raindrop-format-current-time))))))
 
 (defun helm-raindrop-debug-page-error (url error-thrown)
   "Log failed API request.
@@ -491,10 +497,8 @@ ERROR-THROWN: Error data."
       (message "[Raindrop] Fail %S to GET %s (%0.1fsec) at %s."
 	       error-thrown
 	       url
-	       (time-to-seconds
-		(time-subtract (current-time)
-			       helm-raindrop--debug-start-time))
-	       (format-time-string "%F %T" (current-time)))))
+	       (helm-raindrop-elapsed-seconds helm-raindrop--debug-start-time)
+	       (helm-raindrop-format-current-time))))
 
 (defun helm-raindrop-debug-page-ratelimit-wait (wait-seconds)
   "Log rate limit wait.
@@ -518,10 +522,8 @@ RETRY-COUNT: Attempt number."
 	       helm-raindrop--debug-request-count
 	       (length (helm-raindrop-normalize-collection-ids))
 	       helm-raindrop--debug-total-items
-	       (time-to-seconds
-		(time-subtract (current-time)
-			       helm-raindrop--debug-total-start-time))
-	       (format-time-string "%F %T" (current-time)))))
+	       (helm-raindrop-elapsed-seconds helm-raindrop--debug-total-start-time)
+	       (helm-raindrop-format-current-time))))
 
 ;;; Timer
 
