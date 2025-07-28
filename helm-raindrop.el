@@ -4,7 +4,7 @@
 
 ;; Author: Takashi Masuda <masutaka.net@gmail.com>
 ;; URL: https://github.com/masutaka/emacs-helm-raindrop
-;; Version: 0.0.1
+;; Version: 0.0.2
 ;; Package-Requires: ((emacs "29.1") (helm "4.0.4") (request "0.3.2"))
 
 ;; This program is free software: you can redistribute it and/or modify
