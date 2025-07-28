@@ -1,7 +1,5 @@
 # helm-raindrop.el
 
-<!--
-
 [![melpa badge][melpa-badge]][melpa-link]
 [![melpa stable badge][melpa-stable-badge]][melpa-stable-link]
 
@@ -9,8 +7,6 @@
 [melpa-stable-link]: https://stable.melpa.org/#/helm-raindrop
 [melpa-badge]: https://melpa.org/packages/helm-raindrop-badge.svg
 [melpa-stable-badge]: https://stable.melpa.org/packages/helm-raindrop-badge.svg
-
--->
 
 ## Introduction
 
@@ -26,11 +22,7 @@ You can browse and search your Raindrop.io items using Helm interface.
 
 ## Installation
 
-WIP
-
-<!--
 You can install `helm-raindrop.el` from [MELPA](https://melpa.org) with package.el (`M-x package-install helm-raindrop`).
--->
 
 ## Setup
 
