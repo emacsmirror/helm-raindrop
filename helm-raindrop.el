@@ -99,11 +99,11 @@ nil: No logging, `info': Summary only, `debug': All messages."
 (defconst helm-raindrop--max-retries 3
   "Maximum number of retries for rate limited requests.")
 
-(defconst helm-raindrop--url-regexp "\\[href:\\(.*?\\)\\]"
-  "Regular expression to extract URL from candidate.")
-
 (defconst helm-raindrop--note-regexp "\\[note:\\(.*?\\)\\]"
   "Regular expression to extract note from candidate.")
+
+(defconst helm-raindrop--url-regexp "\\[href:\\(.*?\\)\\]"
+  "Regular expression to extract URL from candidate.")
 
 ;;; Internal Variables
 
@@ -167,23 +167,16 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
 
 (defvar helm-raindrop-action
   '(("Browse URL" . helm-raindrop-browse-url)
-    ("Copy URL" . helm-raindrop-copy-url)
     ("Copy NOTE" . helm-raindrop-copy-note)
-    ("Show URL" . helm-raindrop-show-url)
-    ("Show NOTE" . helm-raindrop-show-note))
+    ("Copy URL" . helm-raindrop-copy-url)
+    ("Show NOTE" . helm-raindrop-show-note)
+    ("Show URL" . helm-raindrop-show-url))
   "Actions available for Raindrop items.")
 
 (defun helm-raindrop-browse-url (candidate)
   "Browse the URL of the selected CANDIDATE."
   (string-match helm-raindrop--url-regexp candidate)
   (browse-url (match-string 1 candidate)))
-
-(defun helm-raindrop-copy-url (candidate)
-  "Copy the URL of the selected CANDIDATE to the clipboard."
-  (string-match helm-raindrop--url-regexp candidate)
-  (let ((url (match-string 1 candidate)))
-    (kill-new url)
-    (message "Copied: %s" url)))
 
 (defun helm-raindrop-copy-note (candidate)
   "Copy the note of the selected CANDIDATE to the clipboard.
@@ -195,14 +188,21 @@ If the note is empty, display a message instead of copying."
       (kill-new note)
       (message "Copied note: %s" note))))
 
-(defun helm-raindrop-show-url (candidate)
-  "Display the URL of the selected CANDIDATE."
+(defun helm-raindrop-copy-url (candidate)
+  "Copy the URL of the selected CANDIDATE to the clipboard."
   (string-match helm-raindrop--url-regexp candidate)
-  (message (match-string 1 candidate)))
+  (let ((url (match-string 1 candidate)))
+    (kill-new url)
+    (message "Copied: %s" url)))
 
 (defun helm-raindrop-show-note (candidate)
   "Display the note of the selected CANDIDATE."
   (string-match helm-raindrop--note-regexp candidate)
+  (message (match-string 1 candidate)))
+
+(defun helm-raindrop-show-url (candidate)
+  "Display the URL of the selected CANDIDATE."
+  (string-match helm-raindrop--url-regexp candidate)
   (message (match-string 1 candidate)))
 
 (defvar helm-raindrop-source
