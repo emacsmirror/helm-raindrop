@@ -99,6 +99,12 @@ nil: No logging, `info': Summary only, `debug': All messages."
 (defconst helm-raindrop--max-retries 3
   "Maximum number of retries for rate limited requests.")
 
+(defconst helm-raindrop--url-regexp "\\[href:\\(.*?\\)\\]"
+  "Regular expression to extract URL from candidate.")
+
+(defconst helm-raindrop--note-regexp "\\[note:\\(.*?\\)\\]"
+  "Regular expression to extract note from candidate.")
+
 ;;; Internal Variables
 
 (defvar helm-raindrop--api-per-page 50
@@ -169,12 +175,12 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
 
 (defun helm-raindrop-browse-url (candidate)
   "Browse the URL of the selected CANDIDATE."
-  (string-match "\\[href:\\(.*?\\)\\]" candidate)
+  (string-match helm-raindrop--url-regexp candidate)
   (browse-url (match-string 1 candidate)))
 
 (defun helm-raindrop-copy-url (candidate)
   "Copy the URL of the selected CANDIDATE to the clipboard."
-  (string-match "\\[href:\\(.*?\\)\\]" candidate)
+  (string-match helm-raindrop--url-regexp candidate)
   (let ((url (match-string 1 candidate)))
     (kill-new url)
     (message "Copied: %s" url)))
@@ -182,7 +188,7 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
 (defun helm-raindrop-copy-note (candidate)
   "Copy the note of the selected CANDIDATE to the clipboard.
 If the note is empty, display a message instead of copying."
-  (string-match "\\[note:\\(.*?\\)\\]" candidate)
+  (string-match helm-raindrop--note-regexp candidate)
   (let ((note (match-string 1 candidate)))
     (if (string-empty-p note)
         (message "No note to copy")
@@ -191,12 +197,12 @@ If the note is empty, display a message instead of copying."
 
 (defun helm-raindrop-show-url (candidate)
   "Display the URL of the selected CANDIDATE."
-  (string-match "\\[href:\\(.*?\\)\\]" candidate)
+  (string-match helm-raindrop--url-regexp candidate)
   (message (match-string 1 candidate)))
 
 (defun helm-raindrop-show-note (candidate)
   "Display the note of the selected CANDIDATE."
-  (string-match "\\[note:\\(.*?\\)\\]" candidate)
+  (string-match helm-raindrop--note-regexp candidate)
   (message (match-string 1 candidate)))
 
 (defvar helm-raindrop-source
