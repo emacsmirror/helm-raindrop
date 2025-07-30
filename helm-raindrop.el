@@ -161,6 +161,8 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
 
 (defvar helm-raindrop-action
   '(("Browse URL" . helm-raindrop-browse-url)
+    ("Copy URL" . helm-raindrop-copy-url)
+    ("Copy NOTE" . helm-raindrop-copy-note)
     ("Show URL" . helm-raindrop-show-url)
     ("Show NOTE" . helm-raindrop-show-note))
   "Actions available for Raindrop items.")
@@ -169,6 +171,23 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
   "Browse the URL of the selected CANDIDATE."
   (string-match "\\[href:\\(.*?\\)\\]" candidate)
   (browse-url (match-string 1 candidate)))
+
+(defun helm-raindrop-copy-url (candidate)
+  "Copy the URL of the selected CANDIDATE to the clipboard."
+  (string-match "\\[href:\\(.*?\\)\\]" candidate)
+  (let ((url (match-string 1 candidate)))
+    (kill-new url)
+    (message "Copied: %s" url)))
+
+(defun helm-raindrop-copy-note (candidate)
+  "Copy the note of the selected CANDIDATE to the clipboard.
+If the note is empty, display a message instead of copying."
+  (string-match "\\[note:\\(.*?\\)\\]" candidate)
+  (let ((note (match-string 1 candidate)))
+    (if (string-empty-p note)
+        (message "No note to copy")
+      (kill-new note)
+      (message "Copied note: %s" note))))
 
 (defun helm-raindrop-show-url (candidate)
   "Display the URL of the selected CANDIDATE."
