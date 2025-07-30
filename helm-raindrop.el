@@ -181,12 +181,13 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
 (defun helm-raindrop-copy-note (candidate)
   "Copy the note of the selected CANDIDATE to the clipboard.
 If the note is empty, display a message instead of copying."
-  (string-match helm-raindrop--note-regexp candidate)
-  (let ((note (match-string 1 candidate)))
-    (if (string-empty-p note)
-        (message "No note to copy")
-      (kill-new note)
-      (message "Copied note: %s" note))))
+  (if (string-match helm-raindrop--note-regexp candidate)
+      (let ((note (match-string 1 candidate)))
+        (if (string-empty-p note)
+            (message "No note to copy")
+          (kill-new note)
+          (message "Copied note: %s" note)))
+    (message "No note to copy")))
 
 (defun helm-raindrop-copy-url (candidate)
   "Copy the URL of the selected CANDIDATE to the clipboard."
@@ -197,8 +198,9 @@ If the note is empty, display a message instead of copying."
 
 (defun helm-raindrop-show-note (candidate)
   "Display the note of the selected CANDIDATE."
-  (string-match helm-raindrop--note-regexp candidate)
-  (message (match-string 1 candidate)))
+  (if (string-match helm-raindrop--note-regexp candidate)
+      (message (match-string 1 candidate))
+    (message "No note")))
 
 (defun helm-raindrop-show-url (candidate)
   "Display the URL of the selected CANDIDATE."
@@ -346,8 +348,12 @@ RETRY-COUNT: Number of retries attempted."
       (insert
        (decode-coding-string
 	(if (string-empty-p format-tags)
-	    (format "%s [note:%s][href:%s]\n" title note url)
-	  (format "%s %s [note:%s][href:%s]\n" format-tags title note url))
+	    (if (string-empty-p note)
+		(format "%s [href:%s]\n" title url)
+	      (format "%s [note:%s][href:%s]\n" title note url))
+	  (if (string-empty-p note)
+	      (format "%s %s [href:%s]\n" format-tags title url)
+	    (format "%s %s [note:%s][href:%s]\n" format-tags title note url)))
 	'utf-8)))))
 
 (defun helm-raindrop-next-page-exist-p (response-body)
