@@ -338,22 +338,23 @@ RETRY-COUNT: Number of retries attempted."
 (defun helm-raindrop-insert-items (response-body)
   "Format and insert items from RESPONSE-BODY into buffer."
   (let ((items (helm-raindrop-items response-body))
-	item title url note format-tags)
+	item title url note format-tags format-highlights)
     (dotimes (i (length items))
       (setq item (aref items i)
 	    title (helm-raindrop-item-title item)
 	    url (helm-raindrop-item-url item)
 	    note (helm-raindrop-item-note item)
-	    format-tags (helm-raindrop-item-format-tags item))
+	    format-tags (helm-raindrop-item-format-tags item)
+	    format-highlights (helm-raindrop-item-format-highlights item))
       (insert
        (decode-coding-string
 	(if (string-empty-p format-tags)
 	    (if (string-empty-p note)
-		(format "%s [href:%s]\n" title url)
-	      (format "%s [note:%s][href:%s]\n" title note url))
+		(format "%s [href:%s]%s\n" title url format-highlights)
+	      (format "%s [note:%s][href:%s]%s\n" title note url format-highlights))
 	  (if (string-empty-p note)
-	      (format "%s %s [href:%s]\n" format-tags title url)
-	    (format "%s %s [note:%s][href:%s]\n" format-tags title note url)))
+	      (format "%s %s [href:%s]%s\n" format-tags title url format-highlights)
+	    (format "%s %s [note:%s][href:%s]%s\n" format-tags title note url format-highlights)))
 	'utf-8)))))
 
 (defun helm-raindrop-next-page-exist-p (response-body)
@@ -411,6 +412,20 @@ RETRY-COUNT: Number of retries attempted."
 (defun helm-raindrop-item-tags (item)
   "Extract tags from ITEM as list."
   (append (cdr (assoc 'tags item)) nil))
+
+(defun helm-raindrop-item-format-highlights (item)
+  "Format highlights from ITEM as bracketed string."
+  (let ((result "")
+        (index 0))
+    (dolist (highlight (append (cdr (assoc 'highlights item)) nil))
+      (let ((text (cdr (assoc 'text highlight)))
+            (note (cdr (assoc 'note highlight))))
+        (unless (string-empty-p text)
+          (setq result (concat result (format "[highlight%d-text:%s]" index text))))
+        (unless (string-empty-p note)
+          (setq result (concat result (format "[highlight%d-note:%s]" index note)))))
+      (cl-incf index))
+    result))
 
 (defun helm-raindrop-total-count (response-body)
   "Extract total item count from RESPONSE-BODY."
