@@ -105,6 +105,12 @@ nil: No logging, `info': Summary only, `debug': All messages."
 (defconst helm-raindrop--url-regexp "\\[href:\\(.*?\\)\\]"
   "Regular expression to extract URL from candidate.")
 
+(defconst helm-raindrop--highlight-text-regexp "\\[highlight\\([0-9]+\\)-text:\\(.*?\\)\\]"
+  "Regular expression to extract highlight text from candidate.")
+
+(defconst helm-raindrop--highlight-note-regexp "\\[highlight\\([0-9]+\\)-note:\\(.*?\\)\\]"
+  "Regular expression to extract highlight note from candidate.")
+
 ;;; Internal Variables
 
 (defvar helm-raindrop--api-per-page 50
@@ -169,8 +175,10 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
   '(("Browse URL" . helm-raindrop-browse-url)
     ("Copy NOTE" . helm-raindrop-copy-note)
     ("Copy URL" . helm-raindrop-copy-url)
+    ("Copy HIGHLIGHTS" . helm-raindrop-copy-highlights)
     ("Show NOTE" . helm-raindrop-show-note)
-    ("Show URL" . helm-raindrop-show-url))
+    ("Show URL" . helm-raindrop-show-url)
+    ("Show HIGHLIGHTS" . helm-raindrop-show-highlights))
   "Actions available for Raindrop items.")
 
 (defun helm-raindrop-browse-url (candidate)
@@ -196,6 +204,16 @@ If the note is empty, display a message instead of copying."
     (kill-new url)
     (message "Copied: %s" url)))
 
+(defun helm-raindrop-copy-highlights (candidate)
+  "Copy all highlights of the selected CANDIDATE to the clipboard.
+If there are no highlights, display a message instead of copying."
+  (let ((highlights (helm-raindrop-extract-highlights candidate)))
+    (if highlights
+        (let ((formatted (helm-raindrop-format-highlights highlights)))
+          (kill-new formatted)
+          (message "Copied %d highlights" (length highlights)))
+      (message "No highlights to copy"))))
+
 (defun helm-raindrop-show-note (candidate)
   "Display the note of the selected CANDIDATE."
   (if (string-match helm-raindrop--note-regexp candidate)
@@ -206,6 +224,49 @@ If the note is empty, display a message instead of copying."
   "Display the URL of the selected CANDIDATE."
   (string-match helm-raindrop--url-regexp candidate)
   (message (match-string 1 candidate)))
+
+(defun helm-raindrop-show-highlights (candidate)
+  "Display all highlights of the selected CANDIDATE."
+  (let ((highlights (helm-raindrop-extract-highlights candidate)))
+    (if highlights
+        (message (helm-raindrop-format-highlights highlights))
+      (message "No highlights"))))
+
+(defun helm-raindrop-extract-highlights (candidate)
+  "Extract all highlights from CANDIDATE.
+Returns a list of (text . note) pairs."
+  (let ((highlights '())
+        (start 0))
+    ;; Extract all highlight texts
+    (while (string-match helm-raindrop--highlight-text-regexp candidate start)
+      (let ((index (string-to-number (match-string 1 candidate)))
+            (text (match-string 2 candidate)))
+        (setq highlights (append highlights (list (cons index (cons text nil)))))
+        (setq start (match-end 0))))
+    ;; Extract all highlight notes and merge with texts
+    (setq start 0)
+    (while (string-match helm-raindrop--highlight-note-regexp candidate start)
+      (let ((index (string-to-number (match-string 1 candidate)))
+            (note (match-string 2 candidate)))
+        (let ((highlight (assoc index highlights)))
+          (when highlight
+            (setcdr (cdr highlight) note)))
+        (setq start (match-end 0))))
+    ;; Convert to (text . note) pairs
+    (mapcar (lambda (h) (cdr h)) (sort highlights (lambda (a b) (< (car a) (car b)))))))
+
+(defun helm-raindrop-format-highlights (highlights)
+  "Format HIGHLIGHTS as a string.
+HIGHLIGHTS is a list of (text . note) pairs."
+  (mapconcat
+   (lambda (highlight)
+     (let ((text (car highlight))
+           (note (cdr highlight)))
+       (if note
+           (concat "> " text "\n\n" note)
+         (concat "> " text))))
+   highlights
+   "\n\n"))
 
 (defvar helm-raindrop-source
   (helm-build-in-buffer-source "Raindrops"
