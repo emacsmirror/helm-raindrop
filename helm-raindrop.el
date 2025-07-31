@@ -205,7 +205,7 @@ If the note is empty, display a message instead of copying."
     (message "Copied: %s" url)))
 
 (defun helm-raindrop-copy-highlights (candidate)
-  "Copy all highlights of the selected CANDIDATE to the clipboard.
+  "Copy all highlight annotations of the selected CANDIDATE to the clipboard.
 If there are no highlights, display a message instead of copying."
   (let ((highlights (helm-raindrop-extract-highlights candidate)))
     (if highlights
@@ -226,14 +226,14 @@ If there are no highlights, display a message instead of copying."
   (message (match-string 1 candidate)))
 
 (defun helm-raindrop-show-highlights (candidate)
-  "Display all highlights of the selected CANDIDATE."
+  "Display all highlight annotations of the selected CANDIDATE."
   (let ((highlights (helm-raindrop-extract-highlights candidate)))
     (if highlights
         (message (helm-raindrop-format-highlights highlights))
       (message "No highlights"))))
 
 (defun helm-raindrop-extract-highlights (candidate)
-  "Extract all highlights from CANDIDATE.
+  "Extract all highlight annotations from CANDIDATE.
 Returns a list of (text . note) pairs."
   (let ((highlights '())
         (start 0))
@@ -256,7 +256,7 @@ Returns a list of (text . note) pairs."
     (mapcar (lambda (h) (cdr h)) (sort highlights (lambda (a b) (< (car a) (car b)))))))
 
 (defun helm-raindrop-format-highlights (highlights)
-  "Format HIGHLIGHTS as a string.
+  "Format highlight annotations as a string.
 HIGHLIGHTS is a list of (text . note) pairs."
   (mapconcat
    (lambda (highlight)
@@ -475,7 +475,7 @@ RETRY-COUNT: Number of retries attempted."
   (append (cdr (assoc 'tags item)) nil))
 
 (defun helm-raindrop-item-format-highlights (item)
-  "Format highlights from ITEM as bracketed string."
+  "Format highlight annotations from ITEM as bracketed string."
   (let ((result "")
         (index 0))
     (dolist (highlight (append (cdr (assoc 'highlights item)) nil))
