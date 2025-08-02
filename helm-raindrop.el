@@ -153,7 +153,15 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
 (defvar helm-raindrop--debug-total-items 0
   "Total number of items processed across all collections.")
 
-;;; Macro
+;;; Helm source
+
+(defvar helm-raindrop-source
+  (helm-build-in-buffer-source "Raindrops"
+    :init #'helm-raindrop-load
+    :action 'helm-raindrop-action
+    :multiline t
+    :migemo t)
+  "Helm source for searching Raindrop.io items.")
 
 (defmacro helm-raindrop-file-check (&rest body)
   "Execute BODY only if the cache file exists."
@@ -162,8 +170,6 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
      (message "%s not found. Please wait up to %d minutes."
 	      helm-raindrop-file (/ helm-raindrop-interval 60))))
 
-;;; Helm source
-
 (defun helm-raindrop-load ()
   "Load cached items into Helm candidate buffer."
   (helm-raindrop-file-check
@@ -171,8 +177,19 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
      (let ((coding-system-for-read 'utf-8))
        (insert-file-contents helm-raindrop-file)))))
 
+;;;###autoload
+(defun helm-raindrop ()
+  "Search Raindrop.io items using Helm interface."
+  (interactive)
+  (let ((helm-full-frame helm-raindrop--full-frame))
+    (helm-raindrop-file-check
+     (helm :sources helm-raindrop-source
+	   :prompt "Find Raindrops: "))))
+
+;;; Helm action
+
 (defvar helm-raindrop-action
-  '(("Browse URL" . helm-raindrop-browse-url)
+  '(("Browse URL" . helm-raindrop-browse-url) ;; should be first
     ("Copy NOTE" . helm-raindrop-copy-note)
     ("Copy URL" . helm-raindrop-copy-url)
     ("Copy HIGHLIGHTS" . helm-raindrop-copy-highlights)
@@ -267,23 +284,6 @@ HIGHLIGHTS is a list of (text . note) pairs."
          (concat "> " text))))
    highlights
    "\n\n"))
-
-(defvar helm-raindrop-source
-  (helm-build-in-buffer-source "Raindrops"
-    :init #'helm-raindrop-load
-    :action 'helm-raindrop-action
-    :multiline t
-    :migemo t)
-  "Helm source for searching Raindrop.io items.")
-
-;;;###autoload
-(defun helm-raindrop ()
-  "Search Raindrop.io items using Helm interface."
-  (interactive)
-  (let ((helm-full-frame helm-raindrop--full-frame))
-    (helm-raindrop-file-check
-     (helm :sources helm-raindrop-source
-	   :prompt "Find Raindrops: "))))
 
 ;;; Process handler
 
