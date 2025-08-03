@@ -84,6 +84,9 @@ nil: No logging, `info': Summary only, `debug': All messages."
 
 ;;; Internal Constants
 
+(defconst helm-raindrop--details-buffer-name "*Helm Raindrop Details*"
+  "Buffer name for displaying item details.")
+
 (defconst helm-raindrop--work-buffer-name " *helm-raindrop-work*"
   "Buffer name for storing fetched items.")
 
@@ -99,17 +102,6 @@ nil: No logging, `info': Summary only, `debug': All messages."
 (defconst helm-raindrop--max-retries 3
   "Maximum number of retries for rate limited requests.")
 
-(defconst helm-raindrop--note-regexp "\\[note:\\(.*?\\)\\]"
-  "Regular expression to extract note from candidate.")
-
-(defconst helm-raindrop--url-regexp "\\[href:\\(.*?\\)\\]"
-  "Regular expression to extract URL from candidate.")
-
-(defconst helm-raindrop--highlight-text-regexp "\\[highlight\\([0-9]+\\)-text:\\(.*?\\)\\]"
-  "Regular expression to extract highlight text from candidate.")
-
-(defconst helm-raindrop--highlight-note-regexp "\\[highlight\\([0-9]+\\)-note:\\(.*?\\)\\]"
-  "Regular expression to extract highlight note from candidate.")
 
 ;;; Internal Variables
 
@@ -196,20 +188,22 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
 
 (defun helm-raindrop-browse-url (candidate)
   "Browse the URL of the selected CANDIDATE."
-  (string-match helm-raindrop--url-regexp candidate)
-  (browse-url (match-string 1 candidate)))
+  (let* ((item (read candidate))
+         (url (alist-get 'url item)))
+    (browse-url url)))
 
 (defun helm-raindrop-copy-item (candidate)
-  "Copy Raindrop item information to clipboard in Markdown format."
-  (let ((content (helm-raindrop-format-item candidate)))
+  "Copy Raindrop item information from CANDIDATE to clipboard in Markdown format."
+  (let* ((item (read candidate))
+         (content (helm-raindrop-format-item item)))
     (kill-new content)
     (message "Copied to clipboard")))
 
 (defun helm-raindrop-show-item (candidate)
-  "Display Raindrop item information in Markdown format."
-  (let ((content (helm-raindrop-format-item candidate))
-        (buffer-name "*Helm Raindrop Details*"))
-    (with-current-buffer (get-buffer-create buffer-name)
+  "Display Raindrop item information from CANDIDATE in Markdown format."
+  (let* ((item (read candidate))
+         (content (helm-raindrop-format-item item)))
+    (with-current-buffer (get-buffer-create helm-raindrop--details-buffer-name)
       (let ((inhibit-read-only t))
         (erase-buffer)
         (insert content)
@@ -219,63 +213,27 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
         (setq buffer-read-only t))
       (display-buffer (current-buffer)))))
 
-(defun helm-raindrop-format-item (candidate)
-  "Format CANDIDATE information as Markdown."
-  (let* ((title (helm-raindrop-extract-title candidate))
-         (url (progn (string-match helm-raindrop--url-regexp candidate)
-                     (match-string 1 candidate)))
-         (note (when (string-match helm-raindrop--note-regexp candidate)
-                 (match-string 1 candidate)))
-         (highlights (helm-raindrop-extract-highlights candidate)))
+(defun helm-raindrop-format-item (item)
+  "Format ITEM (S-expression) as Markdown."
+  (let ((title (alist-get 'title item))
+        (url (alist-get 'url item))
+        (note (alist-get 'note item))
+        (highlights (alist-get 'highlights item)))
     (concat
      (format "# %s\n\n" title)
      (format "## URL\n\n%s\n" url)
-     (when (and note (not (string-empty-p note)))
+     (when note
        (format "\n## Note\n\n%s\n" note))
      (when highlights
        (format "\n## Highlights\n\n%s"
                (mapconcat
                 (lambda (h)
-                  (let ((text (car h))
-                        (hl-note (cdr h)))
+                  (let ((text (alist-get 'text h))
+                        (hl-note (alist-get 'note h)))
                     (if hl-note
                         (format "> \"%s\"\n\n%s\n" text hl-note)
                       (format "> \"%s\"\n" text))))
                 highlights "\n"))))))
-
-(defun helm-raindrop-extract-title (candidate)
-  "Extract title from CANDIDATE by removing all metadata."
-  (let ((title candidate))
-    ;; Remove metadata patterns: [note:...], [href:...], [highlight...:...]
-    (when (string-match "^\\(.*?\\)\\s-*\\[\\(?:note\\|href\\|highlight[0-9]+-\\(?:text\\|note\\)\\):" title)
-      (setq title (match-string 1 title)))
-    ;; Remove leading tags like [TAG1][TAG2]
-    (when (string-match "^\\(?:\\[[^]]+\\]\\s-*\\)*\\(.*\\)" title)
-      (setq title (match-string 1 title)))
-    (string-trim title)))
-
-(defun helm-raindrop-extract-highlights (candidate)
-  "Extract all highlight annotations from CANDIDATE.
-Returns a list of (text . note) pairs."
-  (let ((highlights '())
-        (start 0))
-    ;; Extract all highlight texts
-    (while (string-match helm-raindrop--highlight-text-regexp candidate start)
-      (let ((index (string-to-number (match-string 1 candidate)))
-            (text (match-string 2 candidate)))
-        (setq highlights (append highlights (list (cons index (cons text nil)))))
-        (setq start (match-end 0))))
-    ;; Extract all highlight notes and merge with texts
-    (setq start 0)
-    (while (string-match helm-raindrop--highlight-note-regexp candidate start)
-      (let ((index (string-to-number (match-string 1 candidate)))
-            (note (match-string 2 candidate)))
-        (let ((highlight (assoc index highlights)))
-          (when highlight
-            (setcdr (cdr highlight) note)))
-        (setq start (match-end 0))))
-    ;; Convert to (text . note) pairs
-    (mapcar (lambda (h) (cdr h)) (sort highlights (lambda (a b) (< (car a) (car b)))))))
 
 ;;; Process handler
 
@@ -390,25 +348,37 @@ RETRY-COUNT: Number of retries attempted."
 
 (defun helm-raindrop-insert-items (response-body)
   "Format and insert items from RESPONSE-BODY into buffer."
-  (let ((items (helm-raindrop-items response-body))
-	item title url note format-tags format-highlights)
-    (dotimes (i (length items))
-      (setq item (aref items i)
-	    title (helm-raindrop-item-title item)
-	    url (helm-raindrop-item-url item)
-	    note (helm-raindrop-item-note item)
-	    format-tags (helm-raindrop-item-format-tags item)
-	    format-highlights (helm-raindrop-item-format-highlights item))
-      (insert
-       (decode-coding-string
-	(if (string-empty-p format-tags)
-	    (if (string-empty-p note)
-		(format "%s [href:%s]%s\n" title url format-highlights)
-	      (format "%s [note:%s][href:%s]%s\n" title note url format-highlights))
-	  (if (string-empty-p note)
-	      (format "%s %s [href:%s]%s\n" format-tags title url format-highlights)
-	    (format "%s %s [note:%s][href:%s]%s\n" format-tags title note url format-highlights)))
-	'utf-8)))))
+  (let ((items (helm-raindrop-items response-body)))
+    (dolist (item-data (append items nil))
+      (prin1 `((title . ,(helm-raindrop-item-title item-data))
+               (url . ,(helm-raindrop-item-url item-data))
+               ,@(when-let ((tags (helm-raindrop-item-tags item-data)))
+                   `((tags . ,tags)))
+               ,@(when-let ((note (helm-raindrop-item-note item-data)))
+                   (unless (string-empty-p note)
+                     `((note . ,note))))
+               ,@(when-let ((highlights (helm-raindrop-item-format-highlights-as-sexp item-data)))
+                   `((highlights . ,highlights))))
+             (current-buffer))
+      (insert "\n"))))
+
+(defun helm-raindrop-item-format-highlights-as-sexp (item)
+  "Convert highlight annotations from API response ITEM to S-expression format.
+Returns nil if no highlights exist."
+  (when-let ((highlights (alist-get 'highlights item)))
+    (let ((result '()))
+      (dolist (highlight (append highlights nil))
+        (let ((h-item '()))
+          (when-let ((text (alist-get 'text highlight)))
+            (unless (string-empty-p text)
+              (push `(text . ,text) h-item)))
+          (when-let ((note (alist-get 'note highlight)))
+            (unless (string-empty-p note)
+              (push `(note . ,note) h-item)))
+          (when h-item
+            (push (nreverse h-item) result))))
+      (when result
+        (nreverse result)))))
 
 (defun helm-raindrop-next-page-exist-p (response-body)
   "Return non-nil if RESPONSE-BODY contain items."
@@ -453,32 +423,9 @@ RETRY-COUNT: Number of retries attempted."
   "Extract note from ITEM."
   (cdr (assoc 'note item)))
 
-(defun helm-raindrop-item-format-tags (item)
-  "Format tags from ITEM as bracketed string."
-  (let ((result ""))
-    (mapc
-     (lambda (tag)
-       (setq result (format "%s[%s]" result tag)))
-     (helm-raindrop-item-tags item))
-    (string-trim result)))
-
 (defun helm-raindrop-item-tags (item)
   "Extract tags from ITEM as list."
   (append (cdr (assoc 'tags item)) nil))
-
-(defun helm-raindrop-item-format-highlights (item)
-  "Format highlight annotations from ITEM as bracketed string."
-  (let ((result "")
-        (index 0))
-    (dolist (highlight (append (cdr (assoc 'highlights item)) nil))
-      (let ((text (cdr (assoc 'text highlight)))
-            (note (cdr (assoc 'note highlight))))
-        (unless (string-empty-p text)
-          (setq result (concat result (format "[highlight%d-text:%s]" index text))))
-        (unless (string-empty-p note)
-          (setq result (concat result (format "[highlight%d-note:%s]" index note)))))
-      (cl-incf index))
-    result))
 
 (defun helm-raindrop-total-count (response-body)
   "Extract total item count from RESPONSE-BODY."
