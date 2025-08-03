@@ -260,8 +260,8 @@ Extract title and show it before the remaining S-expression."
 (defun helm-raindrop-http-request ()
   "Fetch all items from configured collections and cache them."
   (helm-raindrop-debug-session-start)
-  (if (get-buffer helm-raindrop--work-buffer-name)
-      (kill-buffer helm-raindrop--work-buffer-name))
+  (when (get-buffer helm-raindrop--work-buffer-name)
+    (kill-buffer helm-raindrop--work-buffer-name))
   (get-buffer-create helm-raindrop--work-buffer-name)
   (helm-raindrop-init-remaining-collection-ids)
   (helm-raindrop-init-ratelimit-state)
@@ -341,15 +341,15 @@ RETRY-COUNT: Number of retries attempted."
   (helm-raindrop-debug-collection-start)
   (setq helm-raindrop--remaining-collection-ids
         (cdr helm-raindrop--remaining-collection-ids))
-  (if helm-raindrop--remaining-collection-ids
-      (helm-raindrop-do-http-request (car helm-raindrop--remaining-collection-ids) 0 0)))
+  (when helm-raindrop--remaining-collection-ids
+    (helm-raindrop-do-http-request (car helm-raindrop--remaining-collection-ids) 0 0)))
 
 (defun helm-raindrop-session-finish ()
   "Finalize session and save cache file."
   (let ((work-buffer (get-buffer helm-raindrop--work-buffer-name)))
-    (if (and work-buffer (> (buffer-size work-buffer) 0))
-        (with-current-buffer work-buffer
-          (write-region (point-min) (point-max) helm-raindrop-file))))
+    (when (and work-buffer (> (buffer-size work-buffer) 0))
+      (with-current-buffer work-buffer
+        (write-region (point-min) (point-max) helm-raindrop-file))))
   (helm-raindrop-cleanup-session)
   (helm-raindrop-debug-session-finish))
 
@@ -542,55 +542,55 @@ RESPONSE-BODY: Parsed JSON response."
     (let ((items-count (length (helm-raindrop-items response-body))))
       (cl-incf helm-raindrop--debug-current-collection-processed-items items-count)
       (cl-incf helm-raindrop--debug-total-items items-count))
-    (if (eq helm-raindrop-debug-mode 'debug)
-	(let ((total-collections (length (helm-raindrop-normalize-collection-ids)))
-              (remaining-collections (length helm-raindrop--remaining-collection-ids)))
-          (message "[Raindrop] Succeed to GET %s [collections: %d/%d] [items: %d/%d] (%0.1fsec) [rate limit: %d/%d] at %s."
-	           url
-	           (1+ (- total-collections remaining-collections))
-	           total-collections
-                   helm-raindrop--debug-current-collection-processed-items
-                   helm-raindrop--debug-current-collection-total-items
-		   (helm-raindrop-elapsed-seconds helm-raindrop--debug-start-time)
-	           (or helm-raindrop--ratelimit-remaining 0)
-	           (or helm-raindrop--ratelimit-limit helm-raindrop--default-ratelimit)
-		   (helm-raindrop-format-current-time))))))
+    (when (eq helm-raindrop-debug-mode 'debug)
+      (let ((total-collections (length (helm-raindrop-normalize-collection-ids)))
+            (remaining-collections (length helm-raindrop--remaining-collection-ids)))
+        (message "[Raindrop] Succeed to GET %s [collections: %d/%d] [items: %d/%d] (%0.1fsec) [rate limit: %d/%d] at %s."
+                 url
+                 (1+ (- total-collections remaining-collections))
+                 total-collections
+                 helm-raindrop--debug-current-collection-processed-items
+                 helm-raindrop--debug-current-collection-total-items
+                 (helm-raindrop-elapsed-seconds helm-raindrop--debug-start-time)
+                 (or helm-raindrop--ratelimit-remaining 0)
+                 (or helm-raindrop--ratelimit-limit helm-raindrop--default-ratelimit)
+                 (helm-raindrop-format-current-time))))))
 
 (defun helm-raindrop-debug-page-error (url error-thrown)
   "Log failed API request.
 URL: Request URL.
 ERROR-THROWN: Error data."
-  (if (eq helm-raindrop-debug-mode 'debug)
-      (message "[Raindrop] Fail %S to GET %s (%0.1fsec) at %s."
-	       error-thrown
-	       url
-	       (helm-raindrop-elapsed-seconds helm-raindrop--debug-start-time)
-	       (helm-raindrop-format-current-time))))
+  (when (eq helm-raindrop-debug-mode 'debug)
+    (message "[Raindrop] Fail %S to GET %s (%0.1fsec) at %s."
+             error-thrown
+             url
+             (helm-raindrop-elapsed-seconds helm-raindrop--debug-start-time)
+             (helm-raindrop-format-current-time))))
 
 (defun helm-raindrop-debug-page-ratelimit-wait (wait-seconds)
   "Log rate limit wait.
 WAIT-SECONDS: Delay before retry."
-  (if (memq helm-raindrop-debug-mode '(info debug))
-      (message "[Raindrop] Rate limit reached. Waiting %0.1f seconds..."
-	       wait-seconds)))
+  (when (memq helm-raindrop-debug-mode '(info debug))
+    (message "[Raindrop] Rate limit reached. Waiting %0.1f seconds..."
+             wait-seconds)))
 
 (defun helm-raindrop-debug-page-ratelimit-retry (wait-seconds retry-count)
   "Log rate limit retry.
 WAIT-SECONDS: Delay before retry.
 RETRY-COUNT: Attempt number."
-  (if (memq helm-raindrop-debug-mode '(info debug))
-      (message "[Raindrop] Rate limit error (429). Retrying in %d seconds... (attempt %d/%d)"
-	       wait-seconds retry-count helm-raindrop--max-retries)))
+  (when (memq helm-raindrop-debug-mode '(info debug))
+    (message "[Raindrop] Rate limit error (429). Retrying in %d seconds... (attempt %d/%d)"
+             wait-seconds retry-count helm-raindrop--max-retries)))
 
 (defun helm-raindrop-debug-session-finish ()
   "Log session completion summary."
-  (if (memq helm-raindrop-debug-mode '(info debug))
-      (message "[Raindrop] Total: %d requests completed for %d collections (%d items) in %0.1fsec at %s."
-	       helm-raindrop--debug-request-count
-	       (length (helm-raindrop-normalize-collection-ids))
-	       helm-raindrop--debug-total-items
-	       (helm-raindrop-elapsed-seconds helm-raindrop--debug-total-start-time)
-	       (helm-raindrop-format-current-time))))
+  (when (memq helm-raindrop-debug-mode '(info debug))
+    (message "[Raindrop] Total: %d requests completed for %d collections (%d items) in %0.1fsec at %s."
+             helm-raindrop--debug-request-count
+             (length (helm-raindrop-normalize-collection-ids))
+             helm-raindrop--debug-total-items
+             (helm-raindrop-elapsed-seconds helm-raindrop--debug-total-start-time)
+             (helm-raindrop-format-current-time))))
 
 ;;; Timer
 
