@@ -230,9 +230,15 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
                 (lambda (h)
                   (let ((text (alist-get 'text h))
                         (hl-note (alist-get 'note h)))
-                    (if hl-note
-                        (format "> \"%s\"\n\n%s\n" text hl-note)
-                      (format "> \"%s\"\n" text))))
+                    (concat
+                     (mapconcat
+                      (lambda (line)
+                        (format "> %s" line))
+                      (split-string text "\n")
+                      "\n")
+                     (when hl-note
+                       (format "\n\n%s" hl-note))
+                     "\n")))
                 highlights "\n"))))))
 
 ;;; Process handler
@@ -348,7 +354,8 @@ RETRY-COUNT: Number of retries attempted."
 
 (defun helm-raindrop-insert-items (response-body)
   "Format and insert items from RESPONSE-BODY into buffer."
-  (let ((items (helm-raindrop-items response-body)))
+  (let ((items (helm-raindrop-items response-body))
+        (print-escape-newlines t))
     (dolist (item-data (append items nil))
       (prin1 `((title . ,(helm-raindrop-item-title item-data))
                (url . ,(helm-raindrop-item-url item-data))
