@@ -177,17 +177,24 @@ Extract title and show it before the remaining S-expression."
       (let* ((item (read candidate))
              (title (alist-get 'title item))
              (tags (alist-get 'tags item))
+             (url (alist-get 'url item))
              (remaining (cl-remove-if
                          (lambda (pair)
-                           (memq (car pair) '(title tags)))
+                           (memq (car pair) '(title tags url)))
                          item))
              (tags-string (when tags
                             (mapconcat (lambda (tag)
                                          (format "#%s" tag))
                                        tags " "))))
-        (if tags-string
-            (format "%s %s %S" title tags-string remaining)
-          (format "%s %S" title remaining)))
+        (cond
+         ((and tags-string remaining)
+          (format "%s %s %s %S" title tags-string url remaining))
+         (tags-string
+          (format "%s %s %s" title tags-string url))
+         (remaining
+          (format "%s %s %S" title url remaining))
+         (t
+          (format "%s %s" title url))))
     (error candidate)))
 
 ;;;###autoload
