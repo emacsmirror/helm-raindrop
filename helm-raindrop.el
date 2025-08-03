@@ -176,11 +176,18 @@ Extract title and show it before the remaining S-expression."
   (condition-case nil
       (let* ((item (read candidate))
              (title (alist-get 'title item))
+             (tags (alist-get 'tags item))
              (remaining (cl-remove-if
                          (lambda (pair)
-                           (eq (car pair) 'title))
-                         item)))
-        (format "%s %S" title remaining))
+                           (memq (car pair) '(title tags)))
+                         item))
+             (tags-string (when tags
+                            (mapconcat (lambda (tag)
+                                         (format "#%s" tag))
+                                       tags " "))))
+        (if tags-string
+            (format "%s %s %S" title tags-string remaining)
+          (format "%s %S" title remaining)))
     (error candidate)))
 
 ;;;###autoload
