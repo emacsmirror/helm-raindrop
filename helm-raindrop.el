@@ -190,12 +190,8 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
 
 (defvar helm-raindrop-action
   '(("Browse URL" . helm-raindrop-browse-url) ;; should be first
-    ("Copy NOTE" . helm-raindrop-copy-note)
-    ("Copy URL" . helm-raindrop-copy-url)
-    ("Copy HIGHLIGHTS" . helm-raindrop-copy-highlights)
-    ("Show NOTE" . helm-raindrop-show-note)
-    ("Show URL" . helm-raindrop-show-url)
-    ("Show HIGHLIGHTS" . helm-raindrop-show-highlights))
+    ("Copy ITEM" . helm-raindrop-copy-item)
+    ("Show ITEM" . helm-raindrop-show-item))
   "Actions available for Raindrop items.")
 
 (defun helm-raindrop-browse-url (candidate)
@@ -203,51 +199,60 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
   (string-match helm-raindrop--url-regexp candidate)
   (browse-url (match-string 1 candidate)))
 
-(defun helm-raindrop-copy-note (candidate)
-  "Copy the note of the selected CANDIDATE to the clipboard.
-If the note is empty, display a message instead of copying."
-  (if (string-match helm-raindrop--note-regexp candidate)
-      (let ((note (match-string 1 candidate)))
-        (if (string-empty-p note)
-            (message "No note to copy")
-          (kill-new note)
-          (message "Copied note: %s" note)))
-    (message "No note to copy")))
+(defun helm-raindrop-copy-item (candidate)
+  "Copy Raindrop item information to clipboard in Markdown format."
+  (let ((content (helm-raindrop-format-item candidate)))
+    (kill-new content)
+    (message "Copied to clipboard")))
 
-(defun helm-raindrop-copy-url (candidate)
-  "Copy the URL of the selected CANDIDATE to the clipboard."
-  (string-match helm-raindrop--url-regexp candidate)
-  (let ((url (match-string 1 candidate)))
-    (kill-new url)
-    (message "Copied: %s" url)))
+(defun helm-raindrop-show-item (candidate)
+  "Display Raindrop item information in Markdown format."
+  (let ((content (helm-raindrop-format-item candidate))
+        (buffer-name "*Helm Raindrop Details*"))
+    (with-current-buffer (get-buffer-create buffer-name)
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert content)
+        (when (fboundp 'markdown-mode)
+          (markdown-mode))
+        (goto-char (point-min))
+        (setq buffer-read-only t))
+      (display-buffer (current-buffer)))))
 
-(defun helm-raindrop-copy-highlights (candidate)
-  "Copy all highlight annotations of the selected CANDIDATE to the clipboard.
-If there are no highlights, display a message instead of copying."
-  (let ((highlights (helm-raindrop-extract-highlights candidate)))
-    (if highlights
-        (let ((formatted (helm-raindrop-format-highlights highlights)))
-          (kill-new formatted)
-          (message "Copied %d highlights" (length highlights)))
-      (message "No highlights to copy"))))
+(defun helm-raindrop-format-item (candidate)
+  "Format CANDIDATE information as Markdown."
+  (let* ((title (helm-raindrop-extract-title candidate))
+         (url (progn (string-match helm-raindrop--url-regexp candidate)
+                     (match-string 1 candidate)))
+         (note (when (string-match helm-raindrop--note-regexp candidate)
+                 (match-string 1 candidate)))
+         (highlights (helm-raindrop-extract-highlights candidate)))
+    (concat
+     (format "# %s\n\n" title)
+     (format "## URL\n\n%s\n" url)
+     (when (and note (not (string-empty-p note)))
+       (format "\n## Note\n\n%s\n" note))
+     (when highlights
+       (format "\n## Highlights\n\n%s"
+               (mapconcat
+                (lambda (h)
+                  (let ((text (car h))
+                        (hl-note (cdr h)))
+                    (if hl-note
+                        (format "> \"%s\"\n\n%s\n" text hl-note)
+                      (format "> \"%s\"\n" text))))
+                highlights "\n"))))))
 
-(defun helm-raindrop-show-note (candidate)
-  "Display the note of the selected CANDIDATE."
-  (if (string-match helm-raindrop--note-regexp candidate)
-      (message (match-string 1 candidate))
-    (message "No note")))
-
-(defun helm-raindrop-show-url (candidate)
-  "Display the URL of the selected CANDIDATE."
-  (string-match helm-raindrop--url-regexp candidate)
-  (message (match-string 1 candidate)))
-
-(defun helm-raindrop-show-highlights (candidate)
-  "Display all highlight annotations of the selected CANDIDATE."
-  (let ((highlights (helm-raindrop-extract-highlights candidate)))
-    (if highlights
-        (message (helm-raindrop-format-highlights highlights))
-      (message "No highlights"))))
+(defun helm-raindrop-extract-title (candidate)
+  "Extract title from CANDIDATE by removing all metadata."
+  (let ((title candidate))
+    ;; Remove metadata patterns: [note:...], [href:...], [highlight...:...]
+    (when (string-match "^\\(.*?\\)\\s-*\\[\\(?:note\\|href\\|highlight[0-9]+-\\(?:text\\|note\\)\\):" title)
+      (setq title (match-string 1 title)))
+    ;; Remove leading tags like [TAG1][TAG2]
+    (when (string-match "^\\(?:\\[[^]]+\\]\\s-*\\)*\\(.*\\)" title)
+      (setq title (match-string 1 title)))
+    (string-trim title)))
 
 (defun helm-raindrop-extract-highlights (candidate)
   "Extract all highlight annotations from CANDIDATE.
@@ -271,19 +276,6 @@ Returns a list of (text . note) pairs."
         (setq start (match-end 0))))
     ;; Convert to (text . note) pairs
     (mapcar (lambda (h) (cdr h)) (sort highlights (lambda (a b) (< (car a) (car b)))))))
-
-(defun helm-raindrop-format-highlights (highlights)
-  "Format highlight annotations as a string.
-HIGHLIGHTS is a list of (text . note) pairs."
-  (mapconcat
-   (lambda (highlight)
-     (let ((text (car highlight))
-           (note (cdr highlight)))
-       (if note
-           (concat "> " text "\n\n" note)
-         (concat "> " text))))
-   highlights
-   "\n\n"))
 
 ;;; Process handler
 
