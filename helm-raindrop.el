@@ -232,12 +232,16 @@ Extract title and show it before the remaining S-expression."
   (let ((title (alist-get 'title item))
         (url (alist-get 'url item))
         (note (alist-get 'note item))
+        (tags (alist-get 'tags item))
         (highlights (alist-get 'highlights item)))
     (concat
      (format "# %s\n\n" title)
-     (format "## URL\n\n%s\n" url)
      (when note
-       (format "\n## Note\n\n%s\n" note))
+       (format "## Note\n\n%s\n\n" note))
+     (when tags
+       (format "## Tags\n\n%s\n\n"
+               (mapconcat (lambda (tag) (format "- %s" tag)) tags "\n")))
+     (format "## URL\n\n%s\n" url)
      (when highlights
        (format "\n## Highlights\n\n%s"
                (mapconcat
