@@ -10,9 +10,13 @@
 
 ## Introduction
 
-`helm-raindrop.el` provides a Helm interface for [Raindrop.io](https://raindrop.io/).
+`helm-raindrop.el` provides a Helm interface for [Raindrop.io](https://raindrop.io/):
 
-You can browse and search your Raindrop.io items using Helm interface.
+- Fuzzy search through your Raindrop.io items with Helm's powerful matching
+- Support for multiple collections and nested collections
+- Display of title, URL, tags, notes, and highlights for each item
+- Migemo support for Japanese search
+- Automatic caching with asynchronous periodic updates
 
 ## Demo
 
@@ -63,16 +67,11 @@ Interactive command to search and browse your Raindrop.io items.
 M-x helm-raindrop
 ```
 
-This command opens a Helm interface where you can:
-- Search through your items using fuzzy matching
-- Browse items with tags displayed in brackets (e.g., `[tag1][tag2]`)
-- Perform various actions on selected items
-
 #### Available Actions
 
 - **Browse URL** (default): Open the selected item in your web browser
-- **Show URL**: Display the item URL in the minibuffer
-- **Show NOTE**: Display the item's note in the minibuffer
+- **Copy ITEM**: Copy item information to clipboard in Markdown format
+- **Show ITEM**: Display item information in a dedicated buffer in Markdown format
 
 #### Key Bindings
 
@@ -82,17 +81,19 @@ This command opens a Helm interface where you can:
 
 ### `helm-raindrop-source`
 
-A Helm source that can be used in your own Helm configurations.
+A Helm source that can be used in your own Helm configurations or combined with other Helm sources.
 
 ```lisp
+;; Use as a standalone source
 (helm :sources 'helm-raindrop-source
       :buffer "*helm raindrop*")
-```
 
-This source provides:
-- Multi-line display support
-- Migemo support for Japanese search
-- Customizable actions
+;; Combine with other sources
+(helm :sources '(helm-raindrop-source
+                 helm-source-bookmarks
+                 helm-source-recentf)
+      :buffer "*helm multi*")
+```
 
 ## Customization
 
