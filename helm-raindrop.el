@@ -150,6 +150,7 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
 (defvar helm-raindrop-source
   (helm-build-in-buffer-source "Raindrops"
     :init #'helm-raindrop-load
+    :real-to-display #'helm-raindrop-real-to-display
     :action 'helm-raindrop-action
     :multiline t
     :migemo t)
@@ -168,6 +169,19 @@ See https://developer.raindrop.io/v1/raindrops/multiple")
    (with-current-buffer (helm-candidate-buffer 'global)
      (let ((coding-system-for-read 'utf-8))
        (insert-file-contents helm-raindrop-file)))))
+
+(defun helm-raindrop-real-to-display (candidate)
+  "Transform CANDIDATE from S-expression to display format.
+Extract title and show it before the remaining S-expression."
+  (condition-case nil
+      (let* ((item (read candidate))
+             (title (alist-get 'title item))
+             (remaining (cl-remove-if
+                         (lambda (pair)
+                           (eq (car pair) 'title))
+                         item)))
+        (format "%s %S" title remaining))
+    (error candidate)))
 
 ;;;###autoload
 (defun helm-raindrop ()
