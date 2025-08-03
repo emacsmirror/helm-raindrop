@@ -14,6 +14,10 @@
 
 You can browse and search your Raindrop.io items using Helm interface.
 
+## Demo
+
+https://github.com/user-attachments/assets/291b762c-4a8c-4721-a188-db8900619d6c
+
 ## Requirements
 
 - Emacs 29.1 or higher
