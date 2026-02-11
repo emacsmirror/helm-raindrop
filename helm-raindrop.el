@@ -275,8 +275,10 @@ Extract title and show it before the remaining S-expression."
 
 ;;; Process handler
 
+;;;###autoload
 (defun helm-raindrop-http-request ()
   "Fetch all items from configured collections and cache them."
+  (interactive)
   (helm-raindrop-debug-session-start)
   (when (get-buffer helm-raindrop--work-buffer-name)
     (kill-buffer helm-raindrop--work-buffer-name))
