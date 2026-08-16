@@ -372,6 +372,8 @@ RETRY-COUNT: Number of retries attempted."
   "Abort session without saving cache file.
 URL: Request URL that failed.
 ERROR-THROWN: Error data."
+  (when (get-buffer helm-raindrop--work-buffer-name)
+    (kill-buffer helm-raindrop--work-buffer-name))
   (helm-raindrop-cleanup-session)
   (helm-raindrop-session-abort-message url error-thrown))
 
