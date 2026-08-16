@@ -325,13 +325,8 @@ RETRY-COUNT: Number of retries attempted."
                 (helm-raindrop-update-ratelimit-from-headers response)
                 (if (helm-raindrop-should-retry-p (request-response-status-code response) retry-count)
                     (helm-raindrop-handle-ratelimit-error response collection-id page retry-count)
-                  ;; Log error and continue with next collection
-                  (helm-raindrop-debug-page-error (request-response-url response) error-thrown)
-                  (if (helm-raindrop-next-collection-exist-p)
-                      ;; More collections to process
-                      (helm-raindrop-process-next-collection)
-                    ;; All collections processed
-                    (helm-raindrop-session-finish))))))))
+                  ;; Abort the session so that partial results are not saved
+                  (helm-raindrop-session-abort (request-response-url response) error-thrown)))))))
 
 (defun helm-raindrop-init-remaining-collection-ids ()
   "Initialize collection IDs queue and validate configuration."
@@ -372,6 +367,13 @@ RETRY-COUNT: Number of retries attempted."
         (write-region (point-min) (point-max) helm-raindrop-file))))
   (helm-raindrop-cleanup-session)
   (helm-raindrop-debug-session-finish))
+
+(defun helm-raindrop-session-abort (url error-thrown)
+  "Abort session without saving cache file.
+URL: Request URL that failed.
+ERROR-THROWN: Error data."
+  (helm-raindrop-cleanup-session)
+  (helm-raindrop-session-abort-message url error-thrown))
 
 (defun helm-raindrop-cleanup-session ()
   "Reset session variables."
@@ -576,16 +578,18 @@ RESPONSE-BODY: Parsed JSON response."
                  (or helm-raindrop--ratelimit-limit helm-raindrop--default-ratelimit)
                  (helm-raindrop-format-current-time))))))
 
-(defun helm-raindrop-debug-page-error (url error-thrown)
-  "Log failed API request.
-URL: Request URL.
+(defun helm-raindrop-session-abort-message (url error-thrown)
+  "Report that the session was aborted.
+Always shown regardless of `helm-raindrop-debug-mode', because the cache
+file is left untouched.
+URL: Request URL that failed.
 ERROR-THROWN: Error data."
-  (when (eq helm-raindrop-debug-mode 'debug)
-    (message "[Raindrop] Fail %S to GET %s (%0.1fsec) at %s."
-             error-thrown
-             url
-             (helm-raindrop-elapsed-seconds helm-raindrop--debug-start-time)
-             (helm-raindrop-format-current-time))))
+  (message "[Raindrop] Aborted: failed %S to GET %s (%0.1fsec) at %s.  %s was not updated."
+           error-thrown
+           url
+           (helm-raindrop-elapsed-seconds helm-raindrop--debug-total-start-time)
+           (helm-raindrop-format-current-time)
+           helm-raindrop-file))
 
 (defun helm-raindrop-debug-page-ratelimit-wait (wait-seconds)
   "Log rate limit wait.
