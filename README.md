@@ -11,6 +11,11 @@
 [melpa-stable-badge]: https://stable.melpa.org/packages/helm-raindrop-badge.svg
 [deepwiki-badge]: https://deepwiki.com/badge.svg
 
+<p>
+  <a href="./README.md"><img alt="README in English" src="https://img.shields.io/badge/English-d9d9d9"></a>
+  <a href="./README_ja.md"><img alt="日本語のREADME" src="https://img.shields.io/badge/日本語-d9d9d9"></a>
+</p>
+
 ## Introduction
 
 `helm-raindrop.el` provides a Helm interface for [Raindrop.io](https://raindrop.io/):
@@ -135,3 +140,7 @@ A Helm source that can be used in your own Helm configurations or combined with 
       - `nil`: No logging
       - `'info`: Summary only
       - `'debug`: All messages
+
+## Architecture
+
+[docs/architecture.md](./docs/architecture.md) describes how the cache file gets filled: the collection and page loop, the two kinds of rate limit waiting, and what happens to the cache when an update fails.

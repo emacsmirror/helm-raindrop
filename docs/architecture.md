@@ -1,5 +1,10 @@
 # Architecture
 
+<p>
+  <a href="./architecture.md"><img alt="Architecture in English" src="https://img.shields.io/badge/English-d9d9d9"></a>
+  <a href="./architecture_ja.md"><img alt="日本語のアーキテクチャドキュメント" src="https://img.shields.io/badge/日本語-d9d9d9"></a>
+</p>
+
 How `helm-raindrop.el` fills its cache file, `helm-raindrop-file`.
 
 With a large collection, a single cache update fans out into hundreds of API requests. They are chained through `request.el` callbacks, throttled by two different kinds of waiting, and written to the file exactly once. This document maps that machinery.
