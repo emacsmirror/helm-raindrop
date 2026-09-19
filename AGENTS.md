@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 `helm-raindrop.el` is a single-file Emacs Lisp package, distributed via MELPA, that gives Helm an interface to [Raindrop.io](https://raindrop.io/). It fetches items from the API into a cache file on a timer, and Helm searches that file rather than the API.
 
